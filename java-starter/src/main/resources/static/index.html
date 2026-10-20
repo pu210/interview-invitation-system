@@ -16,11 +16,12 @@
   </header>
   <main>
     <nav class="module-nav" aria-label="主要功能">
-      <button class="nav-item active" type="button">邀約紀錄</button>
-      <button class="nav-item" type="button" disabled>面試安排總表（尚未實作）</button>
+      <button class="nav-item active" type="button" data-module="records">邀約紀錄</button>
+      <button class="nav-item" type="button" data-module="arrangements">面試安排總表</button>
       <button class="nav-item hr-only" type="button" disabled>設定與紀錄（尚未實作）</button>
       <button class="nav-item hr-only" type="button" disabled>信件範本（尚未實作）</button>
     </nav>
+    <div id="records-module">
     <section class="page-heading">
       <div><p class="eyebrow">P0-A／P0-B｜邀約管理</p><h1>邀約紀錄</h1><p id="permission-note">HR 可管理狀態及處理到期的二次邀約提醒。</p></div>
       <div class="heading-actions hr-only">
@@ -45,6 +46,17 @@
       </table></div>
       <p id="empty-state" class="empty" hidden>沒有符合條件的邀約紀錄。</p>
     </section>
+    </div>
+    <div id="arrangements-module" hidden>
+      <section class="page-heading">
+        <div><p class="eyebrow">P0-C｜角色權限與主管安排</p><h1>面試安排總表</h1><p id="arrangement-permission-note"></p></div>
+      </section>
+      <div id="arrangement-message" class="message" role="status" aria-live="polite"></div>
+      <section class="panel table-panel"><div class="table-wrap"><table>
+        <thead><tr><th>案件／求職者</th><th>職缺／狀態</th><th>面試主管</th><th>地點</th><th>期待安排時間</th><th>HR 最終確認</th><th>操作</th></tr></thead>
+        <tbody id="arrangement-rows"></tbody>
+      </table></div></section>
+    </div>
   </main>
   <dialog id="add-dialog">
     <form id="add-form" method="dialog" novalidate>
@@ -98,6 +110,18 @@
       <label>另立新案原因 <span class="required">必填</span><textarea id="new-case-reason" rows="3" maxlength="300"></textarea></label>
       <p id="new-case-error" class="field-error" role="alert"></p>
       <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">建立新案件</button></div>
+    </form>
+  </dialog>
+  <dialog id="arrangement-dialog">
+    <form id="arrangement-form" method="dialog" novalidate>
+      <div class="dialog-heading"><div><p class="eyebrow">面試安排</p><h2 id="arrangement-title"></h2></div><button class="icon-button" value="cancel" aria-label="關閉">×</button></div>
+      <label>面試主管（最多三位，以逗號或換行分隔）<textarea id="interview-managers" rows="2"></textarea></label>
+      <label>面試地點<select id="interview-location"><option value="">尚未安排</option><option>南港</option><option>板橋</option></select></label>
+      <label>備註<textarea id="interview-notes" rows="2" maxlength="500" placeholder="例如：AI、上機考"></textarea></label>
+      <label>期待安排時間（每行一個日期時間）<textarea id="expected-time-slots" rows="4" placeholder="2026-11-02 10:00"></textarea><small id="expected-time-help"></small></label>
+      <label id="confirmed-interview-field">HR 最終確認面試時間<input id="confirmed-interview-at" type="datetime-local"><small>只有 HR 可確認；儲存後狀態才會改為「確認面試」。</small></label>
+      <p id="arrangement-error" class="field-error" role="alert"></p>
+      <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">儲存面試安排</button></div>
     </form>
   </dialog>
   <script type="module" src="app.js"></script>

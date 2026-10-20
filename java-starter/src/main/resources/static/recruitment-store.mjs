@@ -4,6 +4,7 @@ const STATUS_LABELS = Object.freeze({EMAIL_CONTACT:"信件聯繫",EMAIL_COMMUNIC
 const STORAGE_KEY = "interview-invitation-demo:v1";
 
 export function statusLabel(status) { return STATUS_LABELS[status] ?? status; }
+export function listInterviewArrangementRecords(state) { return state.records.filter((record)=>record.status==="TIME_CONFIRMING"); }
 export function isClosed(record, now = new Date()) {
   if (record.status === "REJECTED") return true;
   if (record.status !== "INTERVIEW_CONFIRMED" || record.interviewCancelled || !record.interviewAt) return false;
@@ -30,7 +31,8 @@ function normalizeState(state) {
   state.scheduleRuns=Array.isArray(state.scheduleRuns)?state.scheduleRuns:[];
   state.records=state.records.map((record)=>{
     const responseEvent=record.statusHistory?.find((event)=>["EMAIL_COMMUNICATING","TIME_CONFIRMING","INTERVIEW_CONFIRMED"].includes(event.toStatus));
-    return {...record,candidateRespondedAt:record.candidateRespondedAt||(responseEvent?.at??null),secondInvitationReminderAt:record.secondInvitationReminderAt??null,secondInvitationAt:record.secondInvitationAt??null,secondInvitationResult:record.secondInvitationResult??null};
+    return {...record,candidateRespondedAt:record.candidateRespondedAt||(responseEvent?.at??null),secondInvitationReminderAt:record.secondInvitationReminderAt??null,secondInvitationAt:record.secondInvitationAt??null,secondInvitationResult:record.secondInvitationResult??null,
+      interviewManagers:Array.isArray(record.interviewManagers)?record.interviewManagers:[],interviewLocation:record.interviewLocation??"",interviewNotes:record.interviewNotes??"",expectedTimeSlots:Array.isArray(record.expectedTimeSlots)?record.expectedTimeSlots:[],arrangementHistory:Array.isArray(record.arrangementHistory)?record.arrangementHistory:[]};
   });
   return state;
 }
@@ -137,5 +139,41 @@ export function createRecruitmentStore(storage, clock = () => new Date()) {
     const updated={...current,secondInvitationAt:at,secondInvitationResult:result}; state.records[index]=updated;
     state.auditEvents.push({action:"EXECUTE_SECOND_INVITATION",role:input.role,result:"SUCCEEDED",recordId:current.id,actorName:assertText(input.actorName,"缺少操作人。"),detail:result,at}); save(state); return clone(updated);
   }
-  const reset=()=>clone(save(seedState())); load(); return {getState,getRecord,createRecord,updateStatus,createFollowUpCase,needsSecondInvitation,runDailySchedule,executeSecondInvitation,reset};
+  function parseManagers(value) {
+    const managers=(Array.isArray(value)?value:String(value??"").split(/[、,\n]/)).map((item)=>String(item).trim()).filter(Boolean);
+    if(new Set(managers).size!==managers.length) throw new Error("面試主管不可重複。");
+    if(managers.length>3) throw new Error("同一案件最多三位不同主管；本次變更未儲存。");
+    return managers;
+  }
+  function parseTimeSlots(value) {
+    const slots=(Array.isArray(value)?value:String(value??"").split("\n")).map((item)=>String(item).trim()).filter(Boolean);
+    return slots.map((slot)=>{const parsed=new Date(slot);if(Number.isNaN(parsed.getTime()))throw new Error("期待安排時間必須是可解析且非空的日期時間。");return parsed.toISOString();});
+  }
+  function updateInterviewArrangement(input) {
+    const state=load(),index=state.records.findIndex((item)=>item.id===input.recordId);
+    if(index<0) throw new Error("找不到指定的招募案件。");
+    const current=state.records[index],changes=input.changes??{},fields=Object.keys(changes);
+    const managerFields=["interviewManagers","interviewLocation","interviewNotes","expectedTimeSlots"];
+    const hrFields=[...managerFields,"confirmedInterviewAt"];
+    const allowed=input.role===ROLES.HR?hrFields:input.role===ROLES.MANAGER?managerFields:[];
+    if(fields.length===0) reject(state,"UPDATE_INTERVIEW_ARRANGEMENT",input.role,"沒有可儲存的面試安排異動。");
+    const forbidden=fields.find((field)=>!allowed.includes(field));
+    if(forbidden) reject(state,"UPDATE_INTERVIEW_ARRANGEMENT",input.role,`目前角色無權修改欄位：${forbidden}。`);
+    if(isClosed(current,clock())) reject(state,"UPDATE_INTERVIEW_ARRANGEMENT",input.role,"案件已結案，不可修改面試安排。");
+    if(input.role===ROLES.MANAGER&&current.status==="TIME_CONFIRMING"&&fields.includes("expectedTimeSlots")) reject(state,"UPDATE_INTERVIEW_ARRANGEMENT",input.role,"時間確認中，主管不可變更期待安排時間。");
+    let normalized={};
+    try {
+      if(fields.includes("interviewManagers")) normalized.interviewManagers=parseManagers(changes.interviewManagers);
+      if(fields.includes("interviewLocation")){const location=String(changes.interviewLocation??"").trim();if(location&&!['南港','板橋'].includes(location))throw new Error("面試地點僅限南港或板橋。");normalized.interviewLocation=location;}
+      if(fields.includes("interviewNotes")) normalized.interviewNotes=String(changes.interviewNotes??"").trim();
+      if(fields.includes("expectedTimeSlots")) normalized.expectedTimeSlots=parseTimeSlots(changes.expectedTimeSlots);
+      if(fields.includes("confirmedInterviewAt")){const value=assertText(changes.confirmedInterviewAt,"請填寫最終面試時間。");const parsed=new Date(value);if(Number.isNaN(parsed.getTime()))throw new Error("最終面試時間格式無效。");normalized.confirmedInterviewAt=parsed.toISOString();normalized.interviewAt=parsed.toISOString();normalized.status="INTERVIEW_CONFIRMED";}
+    } catch(error) { reject(state,"UPDATE_INTERVIEW_ARRANGEMENT",input.role,error.message); }
+    const at=clock().toISOString(),actorName=assertText(input.actorName,"缺少操作人。");
+    const history={actorRole:input.role,actorName,fields,at};
+    const updated={...current,...normalized,arrangementHistory:[...(current.arrangementHistory??[]),history]};
+    if(normalized.status&&normalized.status!==current.status) updated.statusHistory=[...current.statusHistory,{fromStatus:current.status,toStatus:normalized.status,actorRole:input.role,actorName,at,reason:"HR 確認最終面試時間"}];
+    state.records[index]=updated;state.auditEvents.push({action:"UPDATE_INTERVIEW_ARRANGEMENT",role:input.role,result:"SUCCEEDED",recordId:current.id,fields,at});save(state);return clone(updated);
+  }
+  const reset=()=>clone(save(seedState())); load(); return {getState,getRecord,createRecord,updateStatus,createFollowUpCase,needsSecondInvitation,runDailySchedule,executeSecondInvitation,updateInterviewArrangement,reset};
 }
