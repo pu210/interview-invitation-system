@@ -3,36 +3,89 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AI 新人訓｜Java 流程台</title>
+  <title>面談邀約管理系統</title>
   <link rel="stylesheet" href="styles.css">
+  <style>[hidden]{display:none!important}</style>
 </head>
 <body>
-  <header class="topbar"><div><span class="product">AI 新人訓 V2</span><span class="runtime">Java 21</span></div><span class="safe">全程 In-Memory</span></header>
+  <header class="topbar">
+    <div><span class="product">面談邀約管理系統</span><span class="environment">Demo</span></div>
+    <label class="role-switcher" for="current-role">目前角色
+      <select id="current-role"><option value="HR">HR</option><option value="MANAGER">主管</option></select>
+    </label>
+  </header>
   <main>
-    <section class="intro">
-      <div><p class="eyebrow">三日訓練環境</p><h1>招募流程情境台</h1><p>選擇一個情境、重設資料，再執行流程。<br>所有信件、日曆與 Drive 結果都只存在記憶體中。</p></div>
-      <div class="scope"><strong>P0 必做 6 個</strong><span>P1 選做 3 個</span><span>P2 設計題 1 個</span></div>
+    <nav class="module-nav" aria-label="主要功能">
+      <button class="nav-item active" type="button">邀約紀錄</button>
+      <button class="nav-item" type="button" disabled>面試安排總表（尚未實作）</button>
+      <button class="nav-item hr-only" type="button" disabled>設定與紀錄（尚未實作）</button>
+      <button class="nav-item hr-only" type="button" disabled>信件範本（尚未實作）</button>
+    </nav>
+    <section class="page-heading">
+      <div><p class="eyebrow">P0-A｜第一個核心功能</p><h1>邀約紀錄</h1><p id="permission-note">HR 可調整未結案案件狀態，結案案件不可重新啟動。</p></div>
+      <div class="heading-actions hr-only">
+        <button id="reset-demo" class="secondary" type="button">重置示範資料</button>
+        <button id="add-record" class="primary" type="button">＋ 新增求職者</button>
+      </div>
     </section>
-    <section class="toolbar panel">
-      <label for="scenario">訓練情境</label>
-      <select id="scenario"></select>
-      <button id="reset" class="secondary">重設情境</button>
-      <button id="run" class="primary">執行流程</button>
-      <span id="message" role="status">正在載入情境…</span>
+    <div id="message" class="message" role="status" aria-live="polite"></div>
+    <section class="panel filters" aria-label="紀錄篩選">
+      <label>搜尋<input id="search" type="search" placeholder="案件 ID、姓名、職缺或 Email"></label>
+      <label>狀態<select id="status-filter"><option value="">全部狀態</option></select></label>
     </section>
-    <section class="summary-grid">
-      <article class="panel metric"><span>目前狀態</span><strong id="status">—</strong></article>
-      <article class="panel metric"><span>候選人</span><strong id="candidate">—</strong></article>
-      <article class="panel metric"><span>operationId</span><strong id="operation">—</strong></article>
-      <article class="panel metric"><span>下一步</span><strong id="next-actions">—</strong></article>
-    </section>
-    <section class="result-grid">
-      <article class="panel"><h2>模擬信件 <span id="mail-count" class="badge">0</span></h2><div id="mail-records" class="empty">尚無資料</div></article>
-      <article class="panel"><h2>模擬日曆 <span id="calendar-count" class="badge">0</span></h2><div id="calendar-records" class="empty">尚無資料</div></article>
-      <article class="panel"><h2>模擬 Drive <span id="drive-count" class="badge">0</span></h2><div id="drive-records" class="empty">尚無資料</div></article>
-      <article class="panel"><h2>Audit events</h2><div id="audit-events" class="empty">尚無資料</div></article>
+    <section class="panel table-panel">
+      <div class="table-wrap"><table>
+        <thead><tr><th>案件 ID</th><th>求職者</th><th>應徵職缺</th><th>目前狀態</th><th>KEYIN 時間</th><th>案件狀態</th><th>操作</th></tr></thead>
+        <tbody id="record-rows"></tbody>
+      </table></div>
+      <p id="empty-state" class="empty" hidden>沒有符合條件的邀約紀錄。</p>
     </section>
   </main>
-  <script src="app.js" defer></script>
+  <dialog id="add-dialog">
+    <form id="add-form" method="dialog" novalidate>
+      <div class="dialog-heading"><div><p class="eyebrow">新增招募紀錄</p><h2>新增求職者資訊</h2></div><button class="icon-button" value="cancel" aria-label="關閉">×</button></div>
+      <label>姓名 <span class="required">必填</span><input id="candidate-name" type="text" maxlength="80" autocomplete="name"></label>
+      <label>Email <span class="required">必填</span><input id="candidate-email" type="email" maxlength="160" autocomplete="email"></label>
+      <label>手機 <span class="required">必填</span><input id="candidate-phone" type="tel" maxlength="30" autocomplete="tel"></label>
+      <label>應徵職缺 <span class="required">必填</span><input id="candidate-position" type="text" maxlength="100"></label>
+      <div id="possible-duplicate" class="duplicate-warning" hidden>
+        <strong>可能重複邀約</strong>
+        <p id="duplicate-details"></p>
+        <label class="checkbox"><input id="different-person-confirm" type="checkbox"> 我已核對既有資料，確認為不同人</label>
+      </div>
+      <p id="add-error" class="field-error" role="alert"></p>
+      <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">新增招募紀錄</button></div>
+    </form>
+  </dialog>
+  <dialog id="status-dialog">
+    <form id="status-form" method="dialog" novalidate>
+      <div class="dialog-heading"><div><p class="eyebrow">狀態管理與更正</p><h2 id="status-dialog-title">更新狀態</h2></div><button class="icon-button" value="cancel" aria-label="關閉">×</button></div>
+      <label>新狀態 <span class="required">必填</span><select id="new-status" required></select></label>
+      <label id="interview-at-field" hidden>有效面試時間 <span class="required">必填</span><input id="interview-at" type="datetime-local"></label>
+      <div id="rejection-fields" hidden>
+        <label>婉拒種類 <span class="required">必填</span><select id="rejection-type"><option value="">請選擇</option><option>求職者婉拒</option><option>公司婉拒</option></select></label>
+        <label>婉拒原因 <span class="required">必填</span><textarea id="rejection-reason" rows="3" maxlength="300"></textarea></label>
+      </div>
+      <label>異動原因（選填）<textarea id="status-reason" rows="3" maxlength="300" placeholder="例如：更正誤登狀態"></textarea></label>
+      <p id="status-error" class="field-error" role="alert"></p>
+      <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">儲存狀態</button></div>
+    </form>
+  </dialog>
+  <dialog id="history-dialog">
+    <div class="dialog-heading"><div><p class="eyebrow">可追溯紀錄</p><h2 id="history-dialog-title">狀態異動歷程</h2></div><button class="icon-button close-dialog" aria-label="關閉">×</button></div>
+    <ol id="history-list" class="timeline"></ol>
+    <div class="dialog-actions"><button class="secondary close-dialog">關閉</button></div>
+  </dialog>
+  <dialog id="new-case-dialog">
+    <form id="new-case-form" method="dialog" novalidate>
+      <div class="dialog-heading"><div><p class="eyebrow">結案後再次面試</p><h2 id="new-case-dialog-title">另立新案</h2></div><button class="icon-button" value="cancel" aria-label="關閉">×</button></div>
+      <p class="callout">原案件及其結案資訊會保持不變；新案件會取得新的案件 ID 與 KEYIN 時間。</p>
+      <label class="checkbox"><input id="new-case-confirm" type="checkbox"> 我已確認需為此求職者另立新案</label>
+      <label>另立新案原因 <span class="required">必填</span><textarea id="new-case-reason" rows="3" maxlength="300"></textarea></label>
+      <p id="new-case-error" class="field-error" role="alert"></p>
+      <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">建立新案件</button></div>
+    </form>
+  </dialog>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

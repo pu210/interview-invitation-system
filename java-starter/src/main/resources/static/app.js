@@ -1,99 +1,42 @@
-const elements = {
-  scenario: document.querySelector("#scenario"),
-  reset: document.querySelector("#reset"),
-  run: document.querySelector("#run"),
-  message: document.querySelector("#message"),
-  status: document.querySelector("#status"),
-  candidate: document.querySelector("#candidate"),
-  operation: document.querySelector("#operation"),
-  nextActions: document.querySelector("#next-actions")
-};
+import {ROLES,STATUSES,createRecruitmentStore,isClosed,statusLabel} from "./recruitment-store.mjs";
 
-async function request(url, options = {}) {
-  const response = await fetch(url, {headers: {"Content-Type": "application/json"}, ...options});
-  if (!response.ok) throw new Error(`HTTP_${response.status}`);
-  return response.json();
-}
+const store=createRecruitmentStore(window.localStorage); let selectedRecordId=null;
+const elements={role:document.querySelector("#current-role"),permissionNote:document.querySelector("#permission-note"),reset:document.querySelector("#reset-demo"),addRecord:document.querySelector("#add-record"),message:document.querySelector("#message"),search:document.querySelector("#search"),statusFilter:document.querySelector("#status-filter"),rows:document.querySelector("#record-rows"),empty:document.querySelector("#empty-state"),addDialog:document.querySelector("#add-dialog"),addForm:document.querySelector("#add-form"),candidateName:document.querySelector("#candidate-name"),candidateEmail:document.querySelector("#candidate-email"),candidatePhone:document.querySelector("#candidate-phone"),candidatePosition:document.querySelector("#candidate-position"),possibleDuplicate:document.querySelector("#possible-duplicate"),duplicateDetails:document.querySelector("#duplicate-details"),differentPersonConfirm:document.querySelector("#different-person-confirm"),addError:document.querySelector("#add-error"),statusDialog:document.querySelector("#status-dialog"),statusTitle:document.querySelector("#status-dialog-title"),statusForm:document.querySelector("#status-form"),newStatus:document.querySelector("#new-status"),interviewAtField:document.querySelector("#interview-at-field"),interviewAt:document.querySelector("#interview-at"),rejectionFields:document.querySelector("#rejection-fields"),rejectionType:document.querySelector("#rejection-type"),rejectionReason:document.querySelector("#rejection-reason"),statusReason:document.querySelector("#status-reason"),statusError:document.querySelector("#status-error"),historyDialog:document.querySelector("#history-dialog"),historyTitle:document.querySelector("#history-dialog-title"),historyList:document.querySelector("#history-list"),newCaseDialog:document.querySelector("#new-case-dialog"),newCaseTitle:document.querySelector("#new-case-dialog-title"),newCaseForm:document.querySelector("#new-case-form"),newCaseConfirm:document.querySelector("#new-case-confirm"),newCaseReason:document.querySelector("#new-case-reason"),newCaseError:document.querySelector("#new-case-error")};
+function formatDateTime(value){return value?new Intl.DateTimeFormat("zh-TW",{dateStyle:"medium",timeStyle:"short"}).format(new Date(value)):"—";}
+function showMessage(text,type="success"){elements.message.textContent=text;elements.message.className=`message ${type}`;}
+function button(label,className,action,recordId){const item=document.createElement("button");item.type="button";item.className=className;item.textContent=label;item.dataset.action=action;item.dataset.recordId=recordId;return item;}
 
-function busy(value, message) {
-  elements.reset.disabled = value;
-  elements.run.disabled = value;
-  elements.message.textContent = message;
-}
-
-function renderRecords(id, items, formatter) {
-  const target = document.querySelector(`#${id}`);
-  target.replaceChildren();
-  target.className = items.length ? "" : "empty";
-  if (!items.length) {
-    target.textContent = "尚無資料";
-    return;
+function render(){
+  const state=store.getState(),role=elements.role.value;
+  document.querySelectorAll(".hr-only").forEach((item)=>{item.hidden=role!==ROLES.HR;});
+  elements.permissionNote.textContent=role===ROLES.HR?"HR 可調整未結案案件狀態；結案案件不可重新啟動，只能由專用入口另立新案。":"主管可查看邀約紀錄，但不能新增、修改、刪除或變更狀態。";
+  const keyword=elements.search.value.trim().toLowerCase(),status=elements.statusFilter.value;
+  const records=state.records.filter((record)=>{const searchable=[record.id,record.candidate.name,record.candidate.email,record.candidate.position].join(" ").toLowerCase();return(!keyword||searchable.includes(keyword))&&(!status||record.status===status);});
+  elements.rows.replaceChildren();
+  for(const record of records){
+    const row=document.createElement("tr");
+    [record.id,`${record.candidate.name}\n${record.candidate.email}`,record.candidate.position,statusLabel(record.status),formatDateTime(record.keyinAt),isClosed(record)?"已結案":"進行中"].forEach((value,index)=>{const cell=document.createElement("td");cell.textContent=value;if(index===3)cell.className="status-cell";if(index===5)cell.className=isClosed(record)?"closed":"open";row.append(cell);});
+    const actions=document.createElement("td");actions.className="actions";actions.append(button("查看歷程","text-button","history",record.id));
+    if(role===ROLES.HR&&!isClosed(record))actions.append(button("更新狀態","small primary","status",record.id));
+    if(role===ROLES.HR&&isClosed(record))actions.append(button("另立新案","small secondary","new-case",record.id));
+    row.append(actions);elements.rows.append(row);
   }
-  for (const item of items) {
-    const record = document.createElement("div");
-    record.className = "record";
-    record.textContent = formatter(item);
-    target.append(record);
-  }
+  elements.empty.hidden=records.length>0;
 }
+function populateStatusOptions(){for(const status of STATUSES){elements.statusFilter.add(new Option(statusLabel(status),status));elements.newStatus.add(new Option(statusLabel(status),status));}}
+function openAdd(){elements.addForm.reset();elements.addError.textContent="";elements.possibleDuplicate.hidden=true;elements.duplicateDetails.textContent="";elements.addDialog.showModal();}
+function syncStatusFields(){const confirmed=elements.newStatus.value==="INTERVIEW_CONFIRMED",rejected=elements.newStatus.value==="REJECTED";elements.interviewAtField.hidden=!confirmed;elements.interviewAt.required=confirmed;elements.rejectionFields.hidden=!rejected;elements.rejectionType.required=rejected;elements.rejectionReason.required=rejected;}
+function openStatus(recordId){const record=store.getRecord(recordId);selectedRecordId=recordId;elements.statusForm.reset();elements.statusTitle.textContent=`${record.id}｜${record.candidate.name}`;elements.newStatus.value=record.status;elements.interviewAt.value=record.interviewAt?record.interviewAt.slice(0,16):"";elements.statusError.textContent="";syncStatusFields();elements.statusDialog.showModal();}
+function openHistory(recordId){const record=store.getRecord(recordId);elements.historyTitle.textContent=`${record.id}｜${record.candidate.name}`;elements.historyList.replaceChildren();for(const event of [...record.statusHistory].reverse()){const item=document.createElement("li"),title=document.createElement("strong"),detail=document.createElement("span");title.textContent=event.fromStatus?`${statusLabel(event.fromStatus)} → ${statusLabel(event.toStatus)}`:`建立案件｜${statusLabel(event.toStatus)}`;detail.textContent=`${formatDateTime(event.at)}｜${event.actorRole===ROLES.HR?"HR":"主管"}／${event.actorName}${event.reason?`｜${event.reason}`:""}`;item.append(title,detail);elements.historyList.append(item);}elements.historyDialog.showModal();}
+function openNewCase(recordId){const record=store.getRecord(recordId);selectedRecordId=recordId;elements.newCaseForm.reset();elements.newCaseError.textContent="";elements.newCaseTitle.textContent=`${record.id}｜${record.candidate.name}`;elements.newCaseDialog.showModal();}
 
-function render(state) {
-  elements.status.textContent = state.status;
-  elements.status.className = state.status === "READY"
-    ? "status-ready"
-    : state.status.includes("ERROR") || state.status === "NOT_IMPLEMENTED" ? "status-error" : "";
-  elements.candidate.textContent = state.candidateId;
-  elements.operation.textContent = state.operationId;
-  elements.nextActions.textContent = state.nextActions.join("、") || "無";
-  document.querySelector("#mail-count").textContent = state.mailRecords.length;
-  document.querySelector("#calendar-count").textContent = state.calendarRecords.length;
-  document.querySelector("#drive-count").textContent = state.driveRecords.length;
-  renderRecords("mail-records", state.mailRecords, (item) => `${item.mailType}｜${item.status}｜第 ${item.attempt} 次`);
-  renderRecords("calendar-records", state.calendarRecords, (item) => `${item.action}｜${item.status}｜${item.eventId || "尚無 ID"}`);
-  renderRecords("drive-records", state.driveRecords, (item) => `${item.documentType}｜${item.status}｜${item.path}`);
-  renderRecords("audit-events", state.auditEvents, (item) => `${item.eventType}｜${item.status}${item.errorCode ? `｜${item.errorCode}` : ""}`);
-}
-
-async function load() {
-  try {
-    const scenarios = await request("/api/scenarios");
-    const options = scenarios.map((item) => {
-      const option = document.createElement("option");
-      option.value = item.scenarioId;
-      option.textContent = `${item.scenarioId}｜${item.title}`;
-      return option;
-    });
-    elements.scenario.replaceChildren(...options);
-    await reset();
-  } catch (error) {
-    busy(false, `載入失敗：${error.message}`);
-  }
-}
-
-async function reset() {
-  busy(true, "正在重設情境…");
-  try {
-    render(await request(`/api/scenarios/${elements.scenario.value}/reset`, {method: "POST"}));
-    busy(false, "情境已重設，可以開始執行。");
-  } catch (error) {
-    busy(false, `重設失敗：${error.message}`);
-  }
-}
-
-async function run() {
-  busy(true, "正在執行流程…");
-  try {
-    const state = await request(`/api/scenarios/${elements.scenario.value}/run`, {method: "POST"});
-    render(state);
-    busy(false, state.status === "NOT_IMPLEMENTED"
-      ? "此情境尚待實作；請依下一步與 audit event 完成 P0 規則。"
-      : "執行完成，請核對狀態與證據。");
-  } catch (error) {
-    busy(false, `執行失敗：${error.message}`);
-  }
-}
-
-elements.scenario.addEventListener("change", reset);
-elements.reset.addEventListener("click", reset);
-elements.run.addEventListener("click", run);
-load();
+elements.rows.addEventListener("click",(event)=>{const target=event.target.closest("button[data-action]");if(!target)return;if(target.dataset.action==="history")openHistory(target.dataset.recordId);if(target.dataset.action==="status")openStatus(target.dataset.recordId);if(target.dataset.action==="new-case")openNewCase(target.dataset.recordId);});
+elements.addRecord.addEventListener("click",openAdd);
+elements.addForm.addEventListener("submit",(event)=>{if(event.submitter?.value==="cancel")return;event.preventDefault();try{const created=store.createRecord({role:elements.role.value,actorName:"Demo HR",name:elements.candidateName.value,email:elements.candidateEmail.value,phone:elements.candidatePhone.value,position:elements.candidatePosition.value,differentPersonConfirmed:elements.differentPersonConfirm.checked});elements.addDialog.close();showMessage(`已新增 ${created.candidate.name}，案件編號 ${created.id}。`);elements.search.value="";elements.statusFilter.value="";render();}catch(error){elements.addError.textContent=error.message;if(error.message.startsWith("可能重複邀約")){elements.possibleDuplicate.hidden=false;elements.duplicateDetails.textContent=error.message;}}});
+elements.addForm.addEventListener("input",(event)=>{if(event.target===elements.differentPersonConfirm)return;elements.possibleDuplicate.hidden=true;elements.differentPersonConfirm.checked=false;elements.duplicateDetails.textContent="";elements.addError.textContent="";});
+elements.statusForm.addEventListener("submit",(event)=>{if(event.submitter?.value==="cancel")return;event.preventDefault();try{store.updateStatus({recordId:selectedRecordId,role:elements.role.value,actorName:"Demo HR",newStatus:elements.newStatus.value,interviewAt:elements.interviewAt.value,rejectionType:elements.rejectionType.value,rejectionReason:elements.rejectionReason.value,reason:elements.statusReason.value});elements.statusDialog.close();showMessage("狀態已更新，異動歷程已保存。切換角色或重新整理後仍會保留。");render();}catch(error){elements.statusError.textContent=error.message;}});
+elements.newCaseForm.addEventListener("submit",(event)=>{if(event.submitter?.value==="cancel")return;event.preventDefault();try{const created=store.createFollowUpCase({originalRecordId:selectedRecordId,role:elements.role.value,actorName:"Demo HR",confirmed:elements.newCaseConfirm.checked,reason:elements.newCaseReason.value});elements.newCaseDialog.close();showMessage(`已建立新案件 ${created.id}；原結案案件保持不變。`);render();}catch(error){elements.newCaseError.textContent=error.message;}});
+elements.newStatus.addEventListener("change",syncStatusFields);elements.role.addEventListener("change",()=>{showMessage(elements.role.value===ROLES.HR?"已切換為 HR。":"已切換為主管；邀約紀錄為唯讀。","info");render();});elements.search.addEventListener("input",render);elements.statusFilter.addEventListener("change",render);
+elements.reset.addEventListener("click",()=>{if(!window.confirm("確定要清除目前異動並還原虛構示範資料嗎？"))return;store.reset();showMessage("示範資料已重置。","info");render();});
+document.querySelectorAll(".close-dialog").forEach((item)=>item.addEventListener("click",()=>item.closest("dialog").close()));
+populateStatusOptions();render();
