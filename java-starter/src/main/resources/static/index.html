@@ -22,20 +22,25 @@
       <button class="nav-item hr-only" type="button" disabled>信件範本（尚未實作）</button>
     </nav>
     <section class="page-heading">
-      <div><p class="eyebrow">P0-A｜第一個核心功能</p><h1>邀約紀錄</h1><p id="permission-note">HR 可調整未結案案件狀態，結案案件不可重新啟動。</p></div>
+      <div><p class="eyebrow">P0-A／P0-B｜邀約管理</p><h1>邀約紀錄</h1><p id="permission-note">HR 可管理狀態及處理到期的二次邀約提醒。</p></div>
       <div class="heading-actions hr-only">
+        <button id="run-schedule" class="secondary" type="button">執行今日排程</button>
         <button id="reset-demo" class="secondary" type="button">重置示範資料</button>
         <button id="add-record" class="primary" type="button">＋ 新增求職者</button>
       </div>
     </section>
     <div id="message" class="message" role="status" aria-live="polite"></div>
+    <section class="summary-grid" aria-label="二次邀約摘要">
+      <article class="summary-card"><span>需要二邀</span><strong id="reminder-count">0</strong><small>已顯示提醒、尚未執行</small></article>
+      <article class="summary-card"><span>最近排程</span><strong id="last-schedule">尚未執行</strong><small>單機 Demo；開頁補查或手動執行</small></article>
+    </section>
     <section class="panel filters" aria-label="紀錄篩選">
       <label>搜尋<input id="search" type="search" placeholder="案件 ID、姓名、職缺或 Email"></label>
       <label>狀態<select id="status-filter"><option value="">全部狀態</option></select></label>
     </section>
     <section class="panel table-panel">
       <div class="table-wrap"><table>
-        <thead><tr><th>案件 ID</th><th>求職者</th><th>應徵職缺</th><th>目前狀態</th><th>KEYIN 時間</th><th>案件狀態</th><th>操作</th></tr></thead>
+        <thead><tr><th>案件 ID</th><th>求職者</th><th>應徵職缺</th><th>目前狀態</th><th>KEYIN 時間</th><th>二邀狀態</th><th>案件狀態</th><th>操作</th></tr></thead>
         <tbody id="record-rows"></tbody>
       </table></div>
       <p id="empty-state" class="empty" hidden>沒有符合條件的邀約紀錄。</p>
@@ -55,6 +60,15 @@
       </div>
       <p id="add-error" class="field-error" role="alert"></p>
       <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">新增招募紀錄</button></div>
+    </form>
+  </dialog>
+  <dialog id="second-invitation-dialog">
+    <form id="second-invitation-form" method="dialog" novalidate>
+      <div class="dialog-heading"><div><p class="eyebrow">P0-B｜人工執行</p><h2 id="second-invitation-title">執行二次邀約</h2></div><button class="icon-button" value="cancel" aria-label="關閉">×</button></div>
+      <p class="callout">提醒只代表案件已到期；儲存後才算 HR 已實際執行二邀。</p>
+      <label>執行結果 <span class="required">必填</span><textarea id="second-invitation-result" rows="3" maxlength="300" placeholder="例如：已完成電話二邀，等待求職者回覆"></textarea></label>
+      <p id="second-invitation-error" class="field-error" role="alert"></p>
+      <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">確認已執行二邀</button></div>
     </form>
   </dialog>
   <dialog id="status-dialog">
