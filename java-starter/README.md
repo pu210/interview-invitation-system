@@ -12,7 +12,21 @@
 ./mvnw spring-boot:run
 ```
 
-開啟 `http://localhost:8080`。起始版會回報 `NOT_IMPLEMENTED`，請從 `WorkflowEngine.java` 的 TODO 開始完成六個 P0。
+開啟 `http://localhost:8080`。P0-A／P0-B 與面試安排資料由 Spring Boot API 管理，並保存於
+`data/recruitment-state.json`。首次啟動會建立虛構 Demo 種子資料；頁面的「重置示範資料」可還原種子資料。
+
+二次邀約排程會在 Asia/Taipei 時區每日 10:00 執行，也可在頁面手動觸發。前端不再以
+`localStorage` 作為正式資料來源。
+
+主要 API：
+
+- `GET /api/recruitment`
+- `POST /api/recruitment/records`
+- `PATCH /api/recruitment/records/{id}/status`
+- `POST /api/recruitment/records/{id}/follow-up-cases`
+- `POST /api/recruitment/second-invitation-schedule/run`
+- `POST /api/recruitment/records/{id}/second-invitation`
+- `PUT /api/recruitment/records/{id}/arrangement`
 
 ## 測試
 

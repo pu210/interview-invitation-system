@@ -8,12 +8,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/** Compatibility endpoint for the starter contract. Real writes use /api/recruitment. */
 @RestController
 @RequestMapping("/api/interview-arrangements")
 public final class InterviewArrangementController {
     private final InterviewArrangementPolicy policy;
     public InterviewArrangementController(InterviewArrangementPolicy policy) { this.policy = policy; }
-
     @PostMapping("/validate-update")
     public ResponseEntity<?> validateUpdate(@RequestBody UpdateRequest request) {
         var result = policy.validate(request);

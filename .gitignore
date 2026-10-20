@@ -19,6 +19,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Spring Boot demo runtime persistence
+java-starter/data/recruitment-state.json
+
 # Local environment files
 .env
 .env.*
@@ -28,4 +31,3 @@ pnpm-debug.log*
 .idea/
 *.iml
 .vscode/
-

@@ -33,7 +33,7 @@
     <div id="message" class="message" role="status" aria-live="polite"></div>
     <section class="summary-grid" aria-label="二次邀約摘要">
       <article class="summary-card"><span>需要二邀</span><strong id="reminder-count">0</strong><small>已顯示提醒、尚未執行</small></article>
-      <article class="summary-card"><span>最近排程</span><strong id="last-schedule">尚未執行</strong><small>單機 Demo；開頁補查或手動執行</small></article>
+      <article class="summary-card"><span>最近排程</span><strong id="last-schedule">尚未執行</strong><small>後端每日 10:00 自動執行，亦可手動觸發</small></article>
     </section>
     <section class="panel filters" aria-label="紀錄篩選">
       <label>搜尋<input id="search" type="search" placeholder="案件 ID、姓名、職缺或 Email"></label>
@@ -124,6 +124,6 @@
       <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">儲存面試安排</button></div>
     </form>
   </dialog>
-  <script type="module" src="app.js"></script>
+  <script defer src="app.js"></script>
 </body>
 </html>
