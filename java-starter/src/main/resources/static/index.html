@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI 新人訓｜Java 流程台</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar"><div><span class="product">AI 新人訓 V2</span><span class="runtime">Java 21</span></div><span class="safe">全程 In-Memory</span></header>
+  <main>
+    <section class="intro">
+      <div><p class="eyebrow">三日訓練環境</p><h1>招募流程情境台</h1><p>選擇一個情境、重設資料，再執行流程。<br>所有信件、日曆與 Drive 結果都只存在記憶體中。</p></div>
+      <div class="scope"><strong>P0 必做 6 個</strong><span>P1 選做 3 個</span><span>P2 設計題 1 個</span></div>
+    </section>
+    <section class="toolbar panel">
+      <label for="scenario">訓練情境</label>
+      <select id="scenario"></select>
+      <button id="reset" class="secondary">重設情境</button>
+      <button id="run" class="primary">執行流程</button>
+      <span id="message" role="status">正在載入情境…</span>
+    </section>
+    <section class="summary-grid">
+      <article class="panel metric"><span>目前狀態</span><strong id="status">—</strong></article>
+      <article class="panel metric"><span>候選人</span><strong id="candidate">—</strong></article>
+      <article class="panel metric"><span>operationId</span><strong id="operation">—</strong></article>
+      <article class="panel metric"><span>下一步</span><strong id="next-actions">—</strong></article>
+    </section>
+    <section class="result-grid">
+      <article class="panel"><h2>模擬信件 <span id="mail-count" class="badge">0</span></h2><div id="mail-records" class="empty">尚無資料</div></article>
+      <article class="panel"><h2>模擬日曆 <span id="calendar-count" class="badge">0</span></h2><div id="calendar-records" class="empty">尚無資料</div></article>
+      <article class="panel"><h2>模擬 Drive <span id="drive-count" class="badge">0</span></h2><div id="drive-records" class="empty">尚無資料</div></article>
+      <article class="panel"><h2>Audit events</h2><div id="audit-events" class="empty">尚無資料</div></article>
+    </section>
+  </main>
+  <script src="app.js" defer></script>
+</body>
+</html>

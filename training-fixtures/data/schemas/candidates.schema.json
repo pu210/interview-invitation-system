@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["meta","candidates"],"properties":{"meta":{"type":"object"},"candidates":{"type":"array","minItems":10,"maxItems":10,"items":{"type":"object","required":["candidateId","source","name","email","appliedRole","supervisorDecision","candidateDecision","interviewRound"]}}}}

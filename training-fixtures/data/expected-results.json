@@ -1,0 +1,15 @@
+{
+  "meta": {"version":"1.0.0","requiredP0Count":6},
+  "expectedResults": [
+    {"scenarioId":"P0-01","status":"INVITATION_ACCEPTED","mailCount":1,"calendarCount":0,"driveFileCount":0,"nextActions":[]},
+    {"scenarioId":"P0-02","status":"INVITATION_ACCEPTED","mailCount":1,"calendarCount":0,"driveFileCount":0,"nextActions":[]},
+    {"scenarioId":"P0-03","status":"SECOND_INVITATION_SENT","mailCount":1,"calendarCount":0,"driveFileCount":0,"nextActions":["WAIT_FOR_RESPONSE"]},
+    {"scenarioId":"P0-04","status":"DUPLICATE_BLOCKED","mailCount":0,"calendarCount":0,"driveFileCount":0,"nextActions":["REVIEW_EXISTING_INVITATION"]},
+    {"scenarioId":"P0-05","status":"SUPERVISOR_REJECTED","mailCount":0,"calendarCount":0,"driveFileCount":0,"nextActions":["CLOSE_APPLICATION"]},
+    {"scenarioId":"P0-06","status":"INTERVIEW_CONFIRMED","mailCount":1,"calendarCount":1,"driveFileCount":1,"nextActions":[]},
+    {"scenarioId":"P1-01","status":"CANDIDATE_REJECTED","mailCount":0,"calendarCount":0,"driveFileCount":0,"nextActions":["CLOSE_APPLICATION"]},
+    {"scenarioId":"P1-02","status":"INTERVIEW_RESCHEDULED","mailCount":1,"calendarCount":1,"driveFileCount":0,"nextActions":[]},
+    {"scenarioId":"P1-03","status":"MANUAL_SECOND_INTERVIEW","mailCount":0,"calendarCount":0,"driveFileCount":0,"nextActions":["ASK_HR_TO_PROCESS"]},
+    {"scenarioId":"P2-01","status":"INTERVIEW_CONFIRMED","mailCount":1,"calendarCount":1,"driveFileCount":1,"nextActions":[]}
+  ]
+}

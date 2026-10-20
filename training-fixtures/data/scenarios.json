@@ -1,0 +1,15 @@
+{
+  "meta": {"version":"1.0.0","fixedNow":"2026-09-01T09:00:00+08:00","timezone":"Asia/Taipei"},
+  "scenarios": [
+    {"scenarioId":"P0-01","priority":"P0","title":"104 正常邀約並同意","candidateId":"CAND-001","operationId":"OP-P0-01-V1","required":true,"simulatedFailure":null},
+    {"scenarioId":"P0-02","priority":"P0","title":"非 104 來源且沒有履歷編號","candidateId":"CAND-002","operationId":"OP-P0-02-V1","required":true,"simulatedFailure":null},
+    {"scenarioId":"P0-03","priority":"P0","title":"一邀未回，需要二邀","candidateId":"CAND-003","operationId":"OP-P0-03-V1","required":true,"simulatedFailure":null},
+    {"scenarioId":"P0-04","priority":"P0","title":"三個月內重複邀約","candidateId":"CAND-004","operationId":"OP-P0-04-V1","required":true,"simulatedFailure":null},
+    {"scenarioId":"P0-05","priority":"P0","title":"主管婉拒","candidateId":"CAND-005","operationId":"OP-P0-05-V1","required":true,"simulatedFailure":null},
+    {"scenarioId":"P0-06","priority":"P0","title":"確認面試後建立日曆與通知","candidateId":"CAND-006","operationId":"OP-P0-06-V1","required":true,"simulatedFailure":null},
+    {"scenarioId":"P1-01","priority":"P1","title":"候選人婉拒","candidateId":"CAND-007","operationId":"OP-P1-01-V1","required":false,"simulatedFailure":null},
+    {"scenarioId":"P1-02","priority":"P1","title":"面試改期","candidateId":"CAND-008","operationId":"OP-P1-02-V1","required":false,"simulatedFailure":null},
+    {"scenarioId":"P1-03","priority":"P1","title":"二面採人工處理","candidateId":"CAND-009","operationId":"OP-P1-03-V1","required":false,"simulatedFailure":null},
+    {"scenarioId":"P2-01","priority":"P2","title":"寄信失敗與安全重試","candidateId":"CAND-010","operationId":"OP-P2-01-V1","required":false,"simulatedFailure":"MAIL_FAIL_ONCE"}
+  ]
+}

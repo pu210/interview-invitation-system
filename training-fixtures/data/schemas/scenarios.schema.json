@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","required":["meta","scenarios"],"properties":{"scenarios":{"type":"array","minItems":10,"maxItems":10,"items":{"type":"object","required":["scenarioId","priority","title","candidateId","operationId","required"]}}}}
