@@ -18,8 +18,8 @@
     <nav class="module-nav" aria-label="主要功能">
       <button class="nav-item active" type="button" data-module="records">邀約紀錄</button>
       <button class="nav-item" type="button" data-module="arrangements">面試安排總表</button>
-      <button class="nav-item hr-only" type="button" disabled>設定與紀錄（尚未實作）</button>
-      <button class="nav-item hr-only" type="button" disabled>信件範本（尚未實作）</button>
+      <button class="nav-item hr-only" type="button" data-module="logs">設定與紀錄</button>
+      <button class="nav-item hr-only" type="button" data-module="templates">信件範本</button>
     </nav>
     <div id="records-module">
     <section class="page-heading">
@@ -57,7 +57,33 @@
         <tbody id="arrangement-rows"></tbody>
       </table></div></section>
     </div>
+    <section id="logs-module" class="panel" hidden><h1>設定與紀錄</h1><p>包含通知、日曆結果、改期、取消及攔截紀錄。</p><pre id="audit-log"></pre></section>
+    <section id="templates-module" class="panel" hidden><h1>信件範本</h1><p>單一內建面試通知信；可於已確認面試案件選取、帶入資料並預覽。</p><pre id="template-source"></pre></section>
   </main>
+  <dialog id="notification-dialog">
+    <div class="dialog-heading"><h2 id="notification-title">通知信與模擬日曆</h2><button type="button" class="icon-button close-dialog" aria-label="關閉">×</button></div>
+    <p class="callout">所有寄信與日曆操作均為模擬。主管 CC 使用 manager1～3@training.example.invalid 假地址，依主管順序對應。</p>
+    <form id="notification-details-form">
+      <fieldset id="notification-details-fields">
+        <label>HTML 範本<select id="notice-template"><option value="interview-notice">面試通知信（模擬）</option><option value="">未選取／缺少範本（驗收用）</option></select></label>
+        <label>姓氏<input id="notice-surname"></label><label>稱謂<input id="notice-salutation" placeholder="先生／小姐"></label>
+        <label>面試前資料連結<input id="notice-preparation" type="text"></label>
+        <label>會議連結<input id="notice-meeting" type="text"></label>
+        <label>履歷連結<input id="notice-resume" type="text"></label>
+        <label>HR Email<input id="notice-hr" type="text"></label>
+        <button class="secondary" type="submit">儲存通知資料</button>
+      </fieldset>
+    </form>
+    <div id="notice-controls">
+      <p>先儲存資料，再預覽／執行。改期請使用「編輯安排」，取消請更新狀態為「婉拒」並填寫原因。</p>
+      <label class="checkbox"><input id="notice-fail-email" type="checkbox">模擬 Email 失敗</label>
+      <label class="checkbox"><input id="notice-fail-calendar" type="checkbox">模擬日曆失敗</label>
+      <div class="dialog-actions"><button id="notice-preview" type="button" class="secondary">驗證與 HTML 預覽</button><button id="notice-execute" type="button" class="primary">執行／僅重試未成功項目</button></div>
+    </div>
+    <p id="notice-error" class="field-error" role="alert" style="white-space:pre-wrap"></p>
+    <pre id="notice-results" style="white-space:pre-wrap"></pre>
+    <iframe id="notice-html" title="通知信 HTML 預覽" sandbox="" style="width:100%;height:260px;border:1px solid #ddd" hidden></iframe>
+  </dialog>
   <dialog id="add-dialog">
     <form id="add-form" method="dialog" novalidate>
       <div class="dialog-heading"><div><p class="eyebrow">新增招募紀錄</p><h2>新增求職者資訊</h2></div><button class="icon-button" value="cancel" aria-label="關閉">×</button></div>

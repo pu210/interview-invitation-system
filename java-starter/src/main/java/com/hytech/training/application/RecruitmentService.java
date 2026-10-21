@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 import static com.hytech.training.domain.RecruitmentModels.STATUSES;
@@ -78,6 +79,7 @@ public final class RecruitmentService {
         requireHr(input.role(), "主管僅能唯讀查看邀約紀錄，不能修改招募狀態。");
         RecruitmentRecord current = record(id);
         requireOpen(current);
+        String actor = text(input.actorName(), "缺少操作人。");
         if (!STATUSES.contains(input.newStatus())) throw new BusinessException("請選擇有效的招募狀態。");
         if (current.status.equals(input.newStatus())) throw new BusinessException("新狀態與目前狀態相同，沒有需要儲存的異動。");
         OffsetDateTime interviewAt = current.interviewAt;
@@ -96,7 +98,8 @@ public final class RecruitmentService {
         current.rejectionType = rejectionType; current.rejectionReason = rejectionReason;
         if (current.candidateRespondedAt == null && Set.of("EMAIL_COMMUNICATING", "TIME_CONFIRMING", "INTERVIEW_CONFIRMED").contains(current.status))
             current.candidateRespondedAt = now;
-        current.statusHistory.add(new StatusHistory(oldStatus, current.status, input.role(), text(input.actorName(), "缺少操作人。"), now, reason));
+        current.statusHistory.add(new StatusHistory(oldStatus, current.status, input.role(), actor, now, reason));
+        syncCalendar(current, actor);
         audit("UPDATE_STATUS", input.role(), "SUCCEEDED", id, null, now); save(); return current;
     }
 
@@ -173,9 +176,86 @@ public final class RecruitmentService {
             current.statusHistory.add(new StatusHistory(old, current.status, input.role(), actor, now, "HR 確認最終面試時間"));
         }
         current.arrangementHistory.add(new ArrangementHistory(input.role(), actor, List.copyOf(input.changedFields()), now));
+        syncCalendar(current, actor);
         audit("UPDATE_INTERVIEW_ARRANGEMENT", input.role(), "SUCCEEDED", id, null, now); save(); return current;
     }
 
+    public synchronized RecruitmentRecord updateNotificationDetails(String id, NotificationDetailsRequest input) {
+        RecruitmentRecord current = notificationGuard(id, input.role(), input.actorName());
+        if (current.notificationTask != null) throw blocked(id, input.role(), "通知已開始執行，不能更改通知內容；改期請使用面試安排。");
+        if (input.details() == null) throw blocked(id, input.role(), "缺少通知資料。");
+        current.notificationDetails = input.details();
+        audit("UPDATE_NOTIFICATION_DETAILS", input.role(), "SUCCEEDED", id, null, now());
+        save(); return current;
+    }
+    public synchronized NotificationRenderer.Preview previewNotification(String id, ScheduleRequest input) {
+        return NotificationRenderer.preview(notificationGuard(id, input.role(), input.actorName()));
+    }
+    public synchronized RecruitmentRecord executeNotification(String id, NotificationRequest input) {
+        RecruitmentRecord current = notificationGuard(id, input.role(), input.actorName());
+        NotificationRenderer.Preview preview = NotificationRenderer.preview(current);
+        if (!preview.errors().isEmpty()) throw blocked(id, input.role(), String.join("\n", preview.errors()));
+        NotificationTask task = current.notificationTask;
+        if (task == null) {
+            task = new NotificationTask(); task.id = "NOTICE-" + UUID.randomUUID();
+            task.to = preview.to(); task.cc = preview.cc(); task.html = preview.html();
+            current.notificationTask = task;
+        }
+        if (!"成功".equals(task.emailStatus)) {
+            task.to = preview.to(); task.cc = preview.cc(); task.html = preview.html();
+            task.emailStatus = input.failEmail() ? "失敗" : "成功";
+            task.emailFailure = input.failEmail() ? "Demo 模擬 Email 寄送失敗" : null;
+            notificationAttempt(current, "EMAIL", task.emailStatus, task.emailFailure, input.actorName());
+            save();
+        }
+        if ("成功".equals(task.emailStatus) && !"成功".equals(task.calendarStatus)) {
+            task.calendarStatus = input.failCalendar() ? "失敗" : "成功";
+            task.calendarFailure = input.failCalendar() ? "Demo 模擬日曆建立失敗" : null;
+            if (!input.failCalendar()) {
+                task.event = new CalendarEvent(); task.event.id = "CAL-" + UUID.randomUUID();
+                populateCalendar(current);
+            }
+            notificationAttempt(current, "CALENDAR", task.calendarStatus, task.calendarFailure, input.actorName());
+            save();
+        }
+        return current;
+    }
+    public synchronized List<AuditEvent> auditEvents(String role) {
+        requireHr(role, "只有 HR 可以查看設定與紀錄。"); return List.copyOf(state.auditEvents);
+    }
+    private RecruitmentRecord notificationGuard(String id, String role, String actor) {
+        try { requireHr(role, "只有 HR 可以操作通知信與模擬日曆。");
+            RecruitmentRecord current = record(id); requireOpen(current); text(actor, "缺少操作人。"); return current;
+        } catch (BusinessException ex) { throw blocked(id, role, ex.getMessage()); }
+    }
+    private BusinessException blocked(String id, String role, String reason) {
+        audit("NOTIFICATION_BLOCKED", role, "BLOCKED", id, reason, now()); save(); return new BusinessException(reason);
+    }
+    private void notificationAttempt(RecruitmentRecord current, String item, String result, String reason, String actor) {
+        current.notificationTask.attempts.add(new NotificationAttempt(item, result, reason, actor, now()));
+        audit("SIMULATE_" + item, "HR", result, current.id, reason, now());
+    }
+    private void populateCalendar(RecruitmentRecord current) {
+        CalendarEvent event = current.notificationTask.event;
+        NotificationDetails details = current.notificationDetails;
+        event.hrEmail = details.hrEmail(); event.managers = List.copyOf(current.interviewManagers);
+        event.managerEmails = NotificationRenderer.managerEmails(current); event.interviewAt = current.interviewAt;
+        event.location = current.interviewLocation; event.meetingUrl = details.meetingUrl(); event.resumeUrl = details.resumeUrl(); event.updatedAt = now();
+    }
+    private void syncCalendar(RecruitmentRecord current, String actor) {
+        NotificationTask task = current.notificationTask;
+        if ("REJECTED".equals(current.status)) current.interviewCancelled = true;
+        if (task == null || task.event == null || "已取消".equals(task.event.status)) return;
+        if ("REJECTED".equals(current.status)) {
+            task.event.status = "已取消"; task.event.updatedAt = now();
+            notificationAttempt(current, "CALENDAR_CANCEL", "成功", current.rejectionReason, actor);
+        } else if (!java.util.Objects.equals(task.event.interviewAt, current.interviewAt)
+                || !java.util.Objects.equals(task.event.location, current.interviewLocation)
+                || !task.event.managers.equals(current.interviewManagers)) {
+            populateCalendar(current);
+            notificationAttempt(current, "CALENDAR_UPDATE", "成功", "更新原事件，不重寄 Email", actor);
+        }
+    }
     public synchronized RecruitmentState reset() { state = seed(); save(); return state; }
     public boolean isClosed(RecruitmentRecord record) { return "REJECTED".equals(record.status) || "INTERVIEW_CONFIRMED".equals(record.status) && !record.interviewCancelled && record.interviewAt != null && record.interviewAt.isBefore(now()); }
     private boolean needsSecondInvitation(RecruitmentRecord record, OffsetDateTime now) { return Duration.between(record.keyinAt, now).compareTo(Duration.ofHours(24)) > 0 && record.candidateRespondedAt == null && record.secondInvitationAt == null && !isClosedAt(record, now); }
@@ -199,6 +279,9 @@ public final class RecruitmentService {
         addSeed(seeded, "REC-20260920-004", "黃可欣", "kexin.huang@example.invalid", "0955-000-404", "商業分析師", "2026-09-20T09:15:00+08:00", "INTERVIEW_CONFIRMED", "2026-10-01T14:00:00+08:00", null);
         addSeed(seeded, "REC-20261020-005", "吳品妍", "pinyan.wu@example.invalid", "0966-000-505", "產品設計師", "2026-10-20T10:00:00+08:00", "EMAIL_CONTACT", null, null);
         RecruitmentRecord invited = addSeed(seeded, "REC-20261017-006", "周柏廷", "boting.zhou@example.invalid", "0977-000-606", "DevOps 工程師", "2026-10-17T08:00:00+08:00", "EMAIL_CONTACT", null, null); invited.secondInvitationReminderAt = OffsetDateTime.parse("2026-10-18T10:00:00+08:00"); invited.secondInvitationAt = OffsetDateTime.parse("2026-10-18T10:20:00+08:00"); invited.secondInvitationResult = "已完成二邀，等待求職者回覆";
+        RecruitmentRecord notice = addSeed(seeded, "REC-DEMO-NOTICE", "許示範", "demo.candidate@example.invalid", "0900-000-707", "後端工程師", now().minusHours(2).toString(), "INTERVIEW_CONFIRMED", now().plusDays(7).withHour(14).withMinute(0).withSecond(0).withNano(0).toString(), null);
+        notice.candidateRespondedAt = now(); notice.interviewManagers.add("Demo 王主管"); notice.interviewLocation = "南港";
+        notice.notificationDetails = new NotificationDetails("interview-notice", "許", "先生/小姐", "https://training.example.invalid/preparation", "https://training.example.invalid/meeting", "https://training.example.invalid/resume", "hr@training.example.invalid");
         return seeded;
     }
     private RecruitmentRecord addSeed(RecruitmentState target, String id, String name, String email, String phone, String position, String keyin, String status, String interview, Consumer<RecruitmentRecord> customizer) { RecruitmentRecord record = new RecruitmentRecord(); record.id=id; record.candidate=new Candidate(name,email,phone,position); record.keyinAt=OffsetDateTime.parse(keyin); record.status=status; record.interviewAt=interview==null?null:OffsetDateTime.parse(interview); record.statusHistory.add(new StatusHistory(null,"EMAIL_CONTACT","HR","Demo HR",record.keyinAt,"建立招募紀錄")); if (!"EMAIL_CONTACT".equals(status)) record.statusHistory.add(new StatusHistory("EMAIL_CONTACT",status,"HR","Demo HR",record.keyinAt.plusDays(1),"種子資料狀態")); if(customizer!=null)customizer.accept(record); target.records.add(record); return record; }
@@ -207,6 +290,8 @@ public final class RecruitmentService {
     public record StatusUpdateRequest(String role, String actorName, String newStatus, String interviewAt, String rejectionType, String rejectionReason, String reason) {}
     public record FollowUpRequest(String role, String actorName, boolean confirmed, String reason) {}
     public record ScheduleRequest(String role, String actorName) {}
+    public record NotificationDetailsRequest(String role, String actorName, NotificationDetails details) {}
+    public record NotificationRequest(String role, String actorName, boolean failEmail, boolean failCalendar) {}
     public record SecondInvitationRequest(String role, String actorName, String result) {}
     public record ArrangementUpdateRequest(String role, String actorName, List<String> changedFields, List<String> interviewManagers, String interviewLocation, String interviewNotes, List<String> expectedTimeSlots, String confirmedInterviewAt) {}
     public static final class BusinessException extends RuntimeException { public BusinessException(String message) { super(message); } }

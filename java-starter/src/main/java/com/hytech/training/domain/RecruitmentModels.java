@@ -21,6 +21,34 @@ public final class RecruitmentModels {
     public record ScheduleRun(String id, String role, String actorName, OffsetDateTime at,
                               int createdCount, int eligibleCount) {}
 
+    public record NotificationDetails(String templateId, String surname, String salutation,
+                                      String preparationUrl, String meetingUrl, String resumeUrl, String hrEmail) {}
+    public record NotificationAttempt(String item, String result, String reason, String actorName, OffsetDateTime at) {}
+    public static final class NotificationTask {
+        public String id;
+        public String emailStatus = "未執行";
+        public String calendarStatus = "未執行";
+        public String emailFailure;
+        public String calendarFailure;
+        public String to;
+        public List<String> cc = new ArrayList<>();
+        public String html;
+        public CalendarEvent event;
+        public List<NotificationAttempt> attempts = new ArrayList<>();
+    }
+    public static final class CalendarEvent {
+        public String id;
+        public String status = "有效";
+        public String hrEmail;
+        public List<String> managers = new ArrayList<>();
+        public List<String> managerEmails = new ArrayList<>();
+        public OffsetDateTime interviewAt;
+        public String location;
+        public String meetingUrl;
+        public String resumeUrl;
+        public OffsetDateTime updatedAt;
+    }
+
     public static final class RecruitmentRecord {
         public String id;
         public Candidate candidate;
@@ -42,6 +70,8 @@ public final class RecruitmentModels {
         public String interviewNotes = "";
         public List<OffsetDateTime> expectedTimeSlots = new ArrayList<>();
         public List<ArrangementHistory> arrangementHistory = new ArrayList<>();
+        public NotificationDetails notificationDetails;
+        public NotificationTask notificationTask;
 
         public RecruitmentRecord() {}
     }

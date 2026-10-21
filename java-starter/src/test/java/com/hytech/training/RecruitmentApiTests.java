@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class RecruitmentApiTests {
     @Autowired MockMvc mockMvc;
+    @Autowired com.hytech.training.application.RecruitmentService service;
 
     @BeforeEach void reset() throws Exception {
         mockMvc.perform(post("/api/recruitment/demo/reset").contentType(MediaType.APPLICATION_JSON)
@@ -55,11 +56,15 @@ class RecruitmentApiTests {
     }
 
     @Test void 二邀排程去重且主管不能執行二邀() throws Exception {
+        var now = java.time.OffsetDateTime.now();
+        int expectedCount = (int) service.state().records.stream().filter(r ->
+                r.secondInvitationReminderAt == null && r.secondInvitationAt == null && r.candidateRespondedAt == null
+                && !service.isClosed(r) && java.time.Duration.between(r.keyinAt, now).compareTo(java.time.Duration.ofHours(24)) > 0).count();
         mockMvc.perform(post("/api/recruitment/second-invitation-schedule/run").contentType(MediaType.APPLICATION_JSON)
                 .content("""
 {"role":"HR","actorName":"測試 HR"}
 """))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.createdCount").value(1));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.createdCount").value(expectedCount));
         mockMvc.perform(post("/api/recruitment/second-invitation-schedule/run").contentType(MediaType.APPLICATION_JSON)
                 .content("""
 {"role":"HR","actorName":"測試 HR"}

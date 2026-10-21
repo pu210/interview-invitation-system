@@ -31,3 +31,8 @@ java-starter/data/recruitment-state.json
 .idea/
 *.iml
 .vscode/
+
+# 排除資料夾與特定檔案
+data/
+docs/P0-D-ACCEPTANCE.md
+docs/p0-d-acceptance.jpg

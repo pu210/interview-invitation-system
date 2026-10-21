@@ -9,6 +9,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.List;
+import com.hytech.training.application.NotificationRenderer;
 
 @RestController
 @RequestMapping("/api/recruitment")
@@ -54,6 +56,26 @@ public final class RecruitmentController {
     public RecruitmentState reset(@RequestBody ScheduleRequest request) {
         if (!"HR".equals(request.role())) throw new BusinessException("只有 HR 可以重置示範資料。");
         return service.reset();
+    }
+
+    @PutMapping("/records/{id}/notification-details")
+    public RecruitmentRecord notificationDetails(@PathVariable String id, @RequestBody NotificationDetailsRequest request) {
+        return service.updateNotificationDetails(id, request);
+    }
+    @PostMapping("/records/{id}/notification/preview")
+    public Object preview(@PathVariable String id, @RequestBody ScheduleRequest request) {
+        return service.previewNotification(id, request);
+    }
+    @PostMapping("/records/{id}/notification/execute")
+    public RecruitmentRecord notify(@PathVariable String id, @RequestBody NotificationRequest request) {
+        return service.executeNotification(id, request);
+    }
+    @GetMapping("/audit-events")
+    public Object audit(@RequestParam String role) { return service.auditEvents(role); }
+    @GetMapping("/notification-templates")
+    public Object templates(@RequestParam String role) {
+        if (!"HR".equals(role)) throw new BusinessException("只有 HR 可以存取信件範本。");
+        return List.of(Map.of("id", NotificationRenderer.TEMPLATE_ID, "name", "面試通知信（模擬）", "html", NotificationRenderer.TEMPLATE));
     }
 
     @ExceptionHandler(BusinessException.class)
