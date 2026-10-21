@@ -10,16 +10,18 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 import java.util.List;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hytech.training.application.NotificationRenderer;
 
 @RestController
 @RequestMapping("/api/recruitment")
 public final class RecruitmentController {
     private final RecruitmentService service;
-    public RecruitmentController(RecruitmentService service) { this.service = service; }
+    private final ObjectMapper mapper;
+    public RecruitmentController(RecruitmentService service, ObjectMapper mapper) { this.service = service; this.mapper = mapper; }
 
     @GetMapping
-    public RecruitmentState state() { return service.state(); }
+    public RecruitmentState state(@RequestParam(defaultValue = "MANAGER") String role) { return service.stateForRole(role); }
 
     @GetMapping("/records/{id}")
     public RecruitmentRecord record(@PathVariable String id) { return service.record(id); }
@@ -27,6 +29,12 @@ public final class RecruitmentController {
     @PostMapping("/records")
     @ResponseStatus(HttpStatus.CREATED)
     public RecruitmentRecord create(@RequestBody CreateRequest request) { return service.create(request); }
+
+    @PutMapping("/records/{id}")
+    public RecruitmentRecord updateRecord(@PathVariable String id, @RequestBody Map<String, Object> payload) {
+        service.validateRecordFields(id, (String) payload.get("role"), payload.keySet());
+        return service.updateRecord(id, mapper.convertValue(payload, RecordUpdateRequest.class));
+    }
 
     @PostMapping("/duplicate-decisions/same-person")
     public Object samePerson(@RequestBody CreateRequest request) {
@@ -54,8 +62,9 @@ public final class RecruitmentController {
     }
 
     @PutMapping("/records/{id}/arrangement")
-    public RecruitmentRecord arrangement(@PathVariable String id, @RequestBody ArrangementUpdateRequest request) {
-        return service.updateArrangement(id, request);
+    public RecruitmentRecord arrangement(@PathVariable String id, @RequestBody Map<String, Object> payload) {
+        service.validateArrangementFields(id, (String) payload.get("role"), payload.keySet());
+        return service.updateArrangement(id, mapper.convertValue(payload, ArrangementUpdateRequest.class));
     }
 
     @PostMapping("/demo/reset")

@@ -130,6 +130,17 @@
       <div class="dialog-actions"><button type="button" class="secondary close-dialog">取消</button><button value="default" class="primary">新增招募紀錄</button></div>
     </form>
   </dialog>
+  <dialog id="edit-record-dialog">
+    <form id="edit-record-form" method="dialog" novalidate>
+      <div class="dialog-heading"><h2 id="edit-record-title">編輯邀約紀錄</h2><button type="button" class="icon-button close-dialog" aria-label="關閉">×</button></div>
+      <label>姓名 <span class="required">必填</span><input id="edit-candidate-name" type="text" maxlength="80"></label>
+      <label>Email <span class="required">必填</span><input id="edit-candidate-email" type="email" maxlength="160"></label>
+      <label>手機 <span class="required">必填</span><input id="edit-candidate-phone" type="tel" maxlength="30"></label>
+      <label>應徵職缺 <span class="required">必填</span><input id="edit-candidate-position" type="text" maxlength="100"></label>
+      <p id="edit-record-error" class="field-error" role="alert"></p>
+      <div class="dialog-actions"><button type="button" class="secondary close-dialog">取消</button><button class="primary" type="submit">儲存邀約紀錄</button></div>
+    </form>
+  </dialog>
   <dialog id="second-invitation-dialog">
     <form id="second-invitation-form" method="dialog" novalidate>
       <div class="dialog-heading"><div><p class="eyebrow">P0-B｜人工執行</p><h2 id="second-invitation-title">執行二次邀約</h2></div><button type="button" class="icon-button close-dialog" aria-label="關閉">×</button></div>
@@ -161,7 +172,8 @@
   <dialog id="new-case-dialog">
     <form id="new-case-form" method="dialog" novalidate>
       <div class="dialog-heading"><div><p class="eyebrow">結案後再次面試</p><h2 id="new-case-dialog-title">另立新案</h2></div><button type="button" class="icon-button close-dialog" aria-label="關閉">×</button></div>
-      <p class="callout">距最近邀約須滿 30 天才能另立新案。原案件及結案資訊保持不變；新案件取得新的案件 ID 與 KEYIN 時間。</p>
+      <p class="callout">已結案案件不論邀約距今是否滿 30 天，皆可另立新案。原案件及結案資訊保持不變；新案件取得新的案件 ID 與 KEYIN 時間。</p>
+      <p id="new-case-warning" class="callout"></p>
       <label class="checkbox"><input id="new-case-confirm" type="checkbox"> 我已確認需為此求職者另立新案</label>
       <label>另立新案原因 <span class="required">必填</span><textarea id="new-case-reason" rows="3" maxlength="300"></textarea></label>
       <p id="new-case-error" class="field-error" role="alert"></p>

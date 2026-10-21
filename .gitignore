@@ -11,6 +11,7 @@ target/
 # Node / Vue build output and caches
 node_modules/
 dist/
+netlify-dist/
 .vite/
 coverage/
 .npm/
@@ -34,8 +35,10 @@ java-starter/data/recruitment-state.json
 .vscode/
 
 # 排除資料夾與特定檔案
+docs/BUGFIX_REPORT_20261021.md
+docs/HR_RECORD_EDIT_BUGFIX_20261021.md
+docs/NOTICE_DEMO_FIX_20261021.md
 DEMO_GUIDE.md
-data/
 docs/P0-D-ACCEPTANCE.md
 docs/EXPECTED-TIME-FIX.md
 docs/P0-E-ACCEPTANCE.md

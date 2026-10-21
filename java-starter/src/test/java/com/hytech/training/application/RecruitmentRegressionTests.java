@@ -66,21 +66,20 @@ class RecruitmentRegressionTests {
         assertEquals(3, again.record(id).notificationTask.attempts.size());
     }
 
-    @Test void followUpRequiresFull30DaysAndCannotReuseAnOldCaseToBypassNewInvitation() throws Exception {
-        RecruitmentService service = service("2026-10-21T02:00:00Z");
-        var original = service.record("REC-20260928-003");
-        original.keyinAt = OffsetDateTime.parse("2026-09-21T02:00:01Z");
-        repo().save(service.state());
-        String before = mapper.writeValueAsString(service.state().records);
-        var request = new FollowUpRequest("HR", "驗收 HR", true, "新職缺");
-        assertThrows(BusinessException.class, () -> service.createFollowUp(original.id, request));
-        assertEquals(before, mapper.writeValueAsString(repo().load().records));
-        RecruitmentService atBoundary = service("2026-10-21T02:00:01Z");
-        var created = atBoundary.createFollowUp(original.id, request);
-        assertEquals(original.id, created.linkedOriginalCaseId);
-        assertThrows(BusinessException.class, () -> atBoundary.createFollowUp(original.id, request));
-        assertEquals(created.id, service("2026-10-21T02:00:02Z").record(created.id).id);
-        assertEquals(original.status, atBoundary.record(original.id).status);
+    @Test void followUpAllowedWithinAndBeyond30DaysAndSurvivesRestart() throws Exception {
+        for (int days : List.of(2, 30, 31)) {
+            RecruitmentService service = service("2026-10-21T02:00:00Z");
+            var original = service.record("REC-20260928-003");
+            original.keyinAt = OffsetDateTime.parse("2026-10-21T02:00:00Z").minusDays(days);
+            repo().save(service.state());
+            String before = mapper.writeValueAsString(original);
+            var created = service.createFollowUp(original.id, new FollowUpRequest("HR", "HR", true, "新職缺"));
+            var restored = service("2026-10-21T02:01:00Z");
+            assertEquals(before, mapper.writeValueAsString(restored.record(original.id)));
+            assertEquals(original.id, restored.record(created.id).linkedOriginalCaseId);
+            assertNull(created.notificationTask);
+            assertEquals("EMAIL_CONTACT", created.status);
+        }
     }
 
     @Test void secondInvitationStatusHistoryAndActorSurviveRestartAndCannotExecuteTwice() {

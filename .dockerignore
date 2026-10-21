@@ -1,0 +1,9 @@
+.git
+**/target
+**/node_modules
+**/data/recruitment-state.json
+data
+netlify-dist
+.env
+.env.*
+.vscode

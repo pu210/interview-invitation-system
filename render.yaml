@@ -1,0 +1,14 @@
+# Free demo: runtime JSON can be lost when the service restarts or redeploys.
+services:
+  - type: web
+    name: interview-invitation-demo
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    autoDeployTrigger: commit
+    healthCheckPath: /api/recruitment
+    envVars:
+      - key: RECRUITMENT_DATA_FILE
+        value: /app/data/recruitment-state.json

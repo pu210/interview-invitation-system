@@ -55,7 +55,7 @@ class BugFixApiTests {
         assertEquals("確認 HR", stored.statusHistory.getLast().actorName());
     }
 
-    @Test void noManagerSlotsCannotConfirmAndFollowUpCannotBypass30Days() throws Exception {
+    @Test void noManagerSlotsCannotConfirm() throws Exception {
         service.record("REC-20260928-003").keyinAt = OffsetDateTime.now().minusDays(2);
         repository.save(service.state());
         String before = mapper.writeValueAsString(repository.load().records);
@@ -63,9 +63,70 @@ class BugFixApiTests {
                 Map.of("role","HR","actorName","HR","changedFields",List.of("confirmedInterviewAt"),
                         "confirmedInterviewAt",OffsetDateTime.now().plusDays(1).toString()))))
                 .andExpect(status().isUnprocessableEntity());
-        mvc.perform(post("/api/recruitment/records/REC-20260928-003/follow-up-cases").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"role\":\"HR\",\"actorName\":\"HR\",\"confirmed\":true,\"reason\":\"再次面試\"}"))
+        assertEquals(before, mapper.writeValueAsString(repository.load().records));
+    }
+
+    @Test void aggregateStateDoesNotExposeAuditOrScheduleToManagerOrAnonymous() throws Exception {
+        service.runSchedule(new RecruitmentService.ScheduleRequest("HR", "HR"));
+        for (String query : List.of("", "?role=MANAGER"))
+            mvc.perform(get("/api/recruitment" + query)).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.records").isNotEmpty())
+                    .andExpect(jsonPath("$.auditEvents").isEmpty())
+                    .andExpect(jsonPath("$.scheduleRuns").isEmpty());
+        mvc.perform(get("/api/recruitment?role=HR")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.auditEvents").isNotEmpty());
+        mvc.perform(get("/api/recruitment/audit-events?role=MANAGER")).andExpect(status().isUnprocessableEntity());
+    }
+
+    @Test void smuggledFieldsAreRejectedAsAWholeIncludingNullAndUnknownFields() throws Exception {
+        String before = mapper.writeValueAsString(repository.load().records);
+        for (String extra : List.of("\"confirmedInterviewAt\":null", "\"confirmedInterviewAt\":\"2099-11-01T10:00:00+08:00\"",
+                "\"status\":\"REJECTED\"", "\"candidate\":{}", "\"unknownField\":true")) {
+            mvc.perform(put(BASE + "/arrangement").contentType(MediaType.APPLICATION_JSON).content(
+                    "{\"role\":\"MANAGER\",\"actorName\":\"主管\",\"changedFields\":[\"interviewNotes\"],\"interviewNotes\":\"不得保存\"," + extra + "}"))
+                    .andExpect(status().isUnprocessableEntity());
+            assertEquals(before, mapper.writeValueAsString(repository.load().records));
+        }
+        assertTrue(repository.load().auditEvents.stream().anyMatch(e -> "OPERATION_BLOCKED".equals(e.action())));
+    }
+
+    @Test void secondInvitationStatusRequiresExecutionTimeAndPersistsHistory() throws Exception {
+        String before = mapper.writeValueAsString(repository.load().records);
+        mvc.perform(patch(BASE + "/status").contentType(MediaType.APPLICATION_JSON).content(
+                "{\"role\":\"HR\",\"actorName\":\"HR\",\"newStatus\":\"SECOND_INVITATION_NO_RESPONSE\"}"))
                 .andExpect(status().isUnprocessableEntity());
         assertEquals(before, mapper.writeValueAsString(repository.load().records));
+        String invited = "/api/recruitment/records/REC-20261017-006/status";
+        mvc.perform(patch(invited).contentType(MediaType.APPLICATION_JSON).content(
+                "{\"role\":\"HR\",\"actorName\":\"HR\",\"newStatus\":\"EMAIL_CONTACT\"}"))
+                .andExpect(status().isOk());
+        mvc.perform(patch(invited).contentType(MediaType.APPLICATION_JSON).content(
+                "{\"role\":\"HR\",\"actorName\":\"HR\",\"newStatus\":\"SECOND_INVITATION_NO_RESPONSE\"}"))
+                .andExpect(status().isOk());
+        assertNotNull(new RecruitmentService(repository).record("REC-20261017-006").secondInvitationAt);
+    }
+
+    @Test void rollbackDeletesCalendarAndTimeAndCanReconfirmWithoutResendingEmail() throws Exception {
+        String id = "REC-DEMO-NOTICE", base = "/api/recruitment/records/" + id;
+        var request = new RecruitmentService.NotificationRequest("HR", "HR", false, false);
+        service.executeNotification(id, request);
+        var originalTime = service.record(id).interviewAt;
+        String oldEvent = service.record(id).notificationTask.event.id;
+        mvc.perform(patch(base + "/status").contentType(MediaType.APPLICATION_JSON).content(
+                "{\"role\":\"HR\",\"actorName\":\"HR\",\"newStatus\":\"TIME_CONFIRMING\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.interviewAt").isEmpty())
+                .andExpect(jsonPath("$.notificationTask.event").isEmpty());
+        var restored = new RecruitmentService(repository);
+        assertNull(restored.record(id).interviewAt);
+        assertNull(restored.record(id).notificationTask.event);
+        assertEquals("成功", restored.record(id).notificationTask.emailStatus);
+        mvc.perform(put(base + "/arrangement").contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(
+                Map.of("role", "HR", "actorName", "HR", "changedFields", List.of("expectedTimeSlots", "confirmedInterviewAt"),
+                        "expectedTimeSlots", List.of(originalTime.toString()), "confirmedInterviewAt", originalTime.toString()))))
+                .andExpect(status().isOk());
+        service.executeNotification(id, request);
+        var task = new RecruitmentService(repository).record(id).notificationTask;
+        assertNotEquals(oldEvent, task.event.id);
+        assertEquals(1, task.attempts.stream().filter(a -> "EMAIL".equals(a.item()) && "成功".equals(a.result())).count());
     }
 }

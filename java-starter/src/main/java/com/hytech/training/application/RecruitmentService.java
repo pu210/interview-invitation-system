@@ -46,6 +46,23 @@ public final class RecruitmentService {
 
     public synchronized RecruitmentState state() { return state; }
 
+    public synchronized RecruitmentState stateForRole(String role) {
+        if ("HR".equals(role)) return state;
+        if (!"MANAGER".equals(role)) throw new BusinessException("請選擇有效角色。");
+        RecruitmentState visible = new RecruitmentState();
+        visible.schemaVersion = state.schemaVersion;
+        visible.records = state.records;
+        return visible;
+    }
+
+    public synchronized void validateArrangementFields(String id, String role, Set<String> fields) {
+        Set<String> allowed = "HR".equals(role) ? HR_FIELDS : "MANAGER".equals(role) ? MANAGER_FIELDS : Set.of();
+        for (String field : fields) {
+            if (!Set.of("role", "actorName", "changedFields").contains(field) && !allowed.contains(field))
+                throw blocked(id, role, "目前角色無權修改欄位：" + field + "。");
+        }
+    }
+
     public synchronized RecruitmentRecord record(String id) {
         return state.records.stream().filter(record -> record.id.equals(id)).findFirst()
                 .orElseThrow(() -> new BusinessException("找不到指定的招募案件。"));
@@ -104,6 +121,31 @@ public final class RecruitmentService {
     private boolean same(String left, String right) { return left != null && !left.isBlank() && right != null && !right.isBlank() && left.trim().equalsIgnoreCase(right.trim()); }
     private boolean samePhone(String left, String right) { return left != null && right != null && same(left.replaceAll("[^0-9]", ""), right.replaceAll("[^0-9]", "")); }
 
+    public synchronized void validateRecordFields(String id, String role, Set<String> fields) {
+        for (String field : fields) {
+            if (!Set.of("role", "actorName", "name", "email", "phone", "position").contains(field))
+                throw blocked(id, role, "邀約紀錄不可修改欄位：" + field + "。");
+        }
+    }
+
+    public synchronized RecruitmentRecord updateRecord(String id, RecordUpdateRequest input) {
+        if (!"HR".equals(input.role())) throw blocked(id, input.role(), "只有 HR 可以編輯邀約紀錄。");
+        RecruitmentRecord current = record(id);
+        requireOpen(current, input.role());
+        String actor = text(input.actorName(), "缺少操作人。");
+        String name = text(input.name(), "姓名為必填。"), email = text(input.email(), "Email 為必填。").toLowerCase(Locale.ROOT);
+        String phone = text(input.phone(), "手機為必填。"), position = text(input.position(), "應徵職缺為必填。");
+        if (!email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) throw new BusinessException("Email 格式不正確。");
+        String digits = phone.replaceAll("[^0-9]", "");
+        if (digits.length() < 8 || digits.length() > 15) throw new BusinessException("手機格式不正確，請輸入 8 至 15 位數字。");
+        Candidate candidate = new Candidate(name, email, phone, position);
+        if (candidate.equals(current.candidate)) throw new BusinessException("沒有可儲存的邀約紀錄異動。");
+        current.candidate = candidate;
+        audit("UPDATE_RECORD", input.role(), "SUCCEEDED", id, "更新求職者姓名、Email、手機及應徵職缺", now(), actor);
+        save();
+        return current;
+    }
+
     public synchronized RecruitmentRecord updateStatus(String id, StatusUpdateRequest input) {
         if (!"HR".equals(input.role())) throw blocked(id, input.role(), "主管僅能唯讀查看邀約紀錄，不能修改招募狀態。");
         RecruitmentRecord current = record(id);
@@ -111,6 +153,8 @@ public final class RecruitmentService {
         String actor = text(input.actorName(), "缺少操作人。");
         if (!STATUSES.contains(input.newStatus())) throw new BusinessException("請選擇有效的招募狀態。");
         if (current.status.equals(input.newStatus())) throw new BusinessException("新狀態與目前狀態相同，沒有需要儲存的異動。");
+        if ("SECOND_INVITATION_NO_RESPONSE".equals(input.newStatus()) && current.secondInvitationAt == null)
+            throw blocked(id, input.role(), "尚無二次邀約時間紀錄，請先執行二次邀約。");
         OffsetDateTime interviewAt = current.interviewAt;
         String rejectionType = null, rejectionReason = null;
         if ("INTERVIEW_CONFIRMED".equals(input.newStatus())) {
@@ -126,6 +170,16 @@ public final class RecruitmentService {
         String reason = "REJECTED".equals(input.newStatus()) ? rejectionType + "：" + rejectionReason
                 : input.reason() == null || input.reason().isBlank() ? "狀態更新" : input.reason().trim();
         String oldStatus = current.status;
+        if ("INTERVIEW_CONFIRMED".equals(oldStatus) && !"INTERVIEW_CONFIRMED".equals(input.newStatus())
+                && !"REJECTED".equals(input.newStatus())) {
+            interviewAt = null;
+            if (current.notificationTask != null) {
+                current.notificationTask.event = null;
+                current.notificationTask.calendarStatus = "未執行";
+                current.notificationTask.calendarFailure = null;
+                notificationAttempt(current, "CALENDAR_DELETE", "成功", "狀態退回，清除原預約日曆", actor);
+            }
+        }
         current.status = input.newStatus(); current.interviewAt = interviewAt;
         current.rejectionType = rejectionType; current.rejectionReason = rejectionReason;
         if (current.candidateRespondedAt == null && Set.of("EMAIL_COMMUNICATING", "TIME_CONFIRMING", "INTERVIEW_CONFIRMED").contains(current.status))
@@ -139,11 +193,6 @@ public final class RecruitmentService {
         if (!"HR".equals(input.role())) throw blocked(id, input.role(), "只有 HR 可以對已結案案件另立新案。");
         RecruitmentRecord original = record(id);
         if (!isClosed(original)) throw blocked(id, input.role(), "只有已結案案件可以使用另立新案入口。");
-        boolean recentInvitation = state.records.stream().anyMatch(existing ->
-                (existing.id.equals(original.id) || same(existing.candidate.email(), original.candidate.email())
-                        || samePhone(existing.candidate.phone(), original.candidate.phone()))
-                        && existing.keyinAt.isAfter(now().minusDays(30)));
-        if (recentInvitation) throw blocked(id, input.role(), "距最近邀約未滿 30 天，無法另立新案。");
         if (!input.confirmed()) throw blocked(id, input.role(), "請先確認需要另立新案。");
         if (input.reason() == null || input.reason().isBlank()) throw blocked(id, input.role(), "另立新案原因為必填。");
         String reason = text(input.reason(), "另立新案原因為必填。"), actor = text(input.actorName(), "缺少操作人。");
@@ -190,6 +239,8 @@ public final class RecruitmentService {
         Set<String> allowed = "HR".equals(input.role()) ? HR_FIELDS : "MANAGER".equals(input.role()) ? MANAGER_FIELDS : Set.of();
         if (input.changedFields() == null || input.changedFields().isEmpty()) throw new BusinessException("沒有可儲存的面試安排異動。");
         input.changedFields().stream().filter(field -> !allowed.contains(field)).findFirst().ifPresent(field -> { throw blocked(id, input.role(), "目前角色無權修改欄位：" + field + "。"); });
+        if (!"HR".equals(input.role()) && input.confirmedInterviewAt() != null)
+            throw blocked(id, input.role(), "目前角色無權修改欄位：confirmedInterviewAt。");
         List<String> managers = current.interviewManagers;
         String location = current.interviewLocation;
         String notes = current.interviewNotes;
@@ -332,14 +383,18 @@ public final class RecruitmentService {
         addSeed(seeded, "REC-20260920-004", "黃可欣", "kexin.huang@example.invalid", "0955-000-404", "商業分析師", "2026-09-20T09:15:00+08:00", "INTERVIEW_CONFIRMED", "2026-10-01T14:00:00+08:00", null);
         addSeed(seeded, "REC-20261020-005", "吳品妍", "pinyan.wu@example.invalid", "0966-000-505", "產品設計師", "2026-10-20T10:00:00+08:00", "EMAIL_CONTACT", null, null);
         RecruitmentRecord invited = addSeed(seeded, "REC-20261017-006", "周柏廷", "boting.zhou@example.invalid", "0977-000-606", "DevOps 工程師", "2026-10-17T08:00:00+08:00", "EMAIL_CONTACT", null, null); invited.secondInvitationReminderAt = OffsetDateTime.parse("2026-10-18T10:00:00+08:00"); invited.secondInvitationAt = OffsetDateTime.parse("2026-10-18T10:20:00+08:00"); invited.secondInvitationResult = "已完成二邀，等待求職者回覆"; invited.status = "SECOND_INVITATION_NO_RESPONSE"; invited.statusHistory.add(new StatusHistory("EMAIL_CONTACT", invited.status, "HR", "Demo HR", invited.secondInvitationAt, "執行二次邀約：" + invited.secondInvitationResult));
-        RecruitmentRecord notice = addSeed(seeded, "REC-DEMO-NOTICE", "許示範", "demo.candidate@example.invalid", "0900-000-707", "後端工程師", now().minusHours(2).toString(), "INTERVIEW_CONFIRMED", now().plusDays(7).withHour(14).withMinute(0).withSecond(0).withNano(0).toString(), null);
-        notice.candidateRespondedAt = now(); notice.interviewManagers.add("Demo 王主管"); notice.interviewLocation = "南港";
+        OffsetDateTime demoNow = now();
+        RecruitmentRecord notice = addSeed(seeded, "REC-DEMO-NOTICE", "許示範", "demo.candidate@example.invalid", "0900-000-707", "後端工程師", demoNow.minusHours(2).toString(), "INTERVIEW_CONFIRMED", demoNow.plusDays(7).withHour(14).withMinute(0).withSecond(0).withNano(0).toString(), null);
+        notice.candidateRespondedAt = demoNow; notice.interviewManagers.add("Demo 王主管"); notice.interviewLocation = "南港";
+        notice.expectedTimeSlots.add(notice.interviewAt);
+        notice.statusHistory.set(1, new StatusHistory("EMAIL_CONTACT", notice.status, "HR", "Demo HR", demoNow, "種子資料狀態"));
         notice.notificationDetails = new NotificationDetails("interview-notice", "許", "先生/小姐", "https://training.example.invalid/preparation", "https://training.example.invalid/meeting", "https://training.example.invalid/resume", "hr@training.example.invalid");
         return seeded;
     }
     private RecruitmentRecord addSeed(RecruitmentState target, String id, String name, String email, String phone, String position, String keyin, String status, String interview, Consumer<RecruitmentRecord> customizer) { RecruitmentRecord record = new RecruitmentRecord(); record.id=id; record.candidate=new Candidate(name,email,phone,position); record.keyinAt=OffsetDateTime.parse(keyin); record.status=status; record.interviewAt=interview==null?null:OffsetDateTime.parse(interview); record.statusHistory.add(new StatusHistory(null,"EMAIL_CONTACT","HR","Demo HR",record.keyinAt,"建立招募紀錄")); if (!"EMAIL_CONTACT".equals(status)) record.statusHistory.add(new StatusHistory("EMAIL_CONTACT",status,"HR","Demo HR",record.keyinAt.plusDays(1),"種子資料狀態")); if(customizer!=null)customizer.accept(record); target.records.add(record); return record; }
 
     public record CreateRequest(String role, String actorName, String name, String email, String phone, String position, boolean differentPersonConfirmed) {}
+    public record RecordUpdateRequest(String role, String actorName, String name, String email, String phone, String position) {}
     public record StatusUpdateRequest(String role, String actorName, String newStatus, String interviewAt, String rejectionType, String rejectionReason, String reason) {}
     public record FollowUpRequest(String role, String actorName, boolean confirmed, String reason) {}
     public record ScheduleRequest(String role, String actorName) {}
