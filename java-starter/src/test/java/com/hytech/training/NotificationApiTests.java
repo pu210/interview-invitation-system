@@ -99,7 +99,7 @@ class NotificationApiTests {
     @Test void rescheduleAndCancelUseOriginalCalendarWithoutEmailResend() throws Exception {
         JsonNode original = execute(false, false).path("notificationTask");
         String time = OffsetDateTime.now().plusDays(12).withNano(0).toString();
-        JsonNode changed = request(put(BASE + "/arrangement"), Map.of("role", "HR", "actorName", "測試 HR", "changedFields", new String[]{"confirmedInterviewAt"}, "confirmedInterviewAt", time), 200);
+        JsonNode changed = request(put(BASE + "/arrangement"), Map.of("role", "HR", "actorName", "測試 HR", "changedFields", new String[]{"expectedTimeSlots","confirmedInterviewAt"}, "expectedTimeSlots", new String[]{time}, "confirmedInterviewAt", time), 200);
         assertEquals(original.path("event").path("id"), changed.path("notificationTask").path("event").path("id"));
         assertEquals(original.path("html"), changed.path("notificationTask").path("html"));
         assertEquals(3, changed.path("notificationTask").path("attempts").size());

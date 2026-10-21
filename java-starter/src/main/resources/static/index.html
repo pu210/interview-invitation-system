@@ -18,7 +18,7 @@
     <nav class="module-nav" aria-label="主要功能">
       <button class="nav-item active" type="button" data-module="records">邀約紀錄</button>
       <button class="nav-item" type="button" data-module="arrangements">面試安排總表</button>
-      <button class="nav-item hr-only" type="button" data-module="logs">設定與紀錄</button>
+      <button class="nav-item hr-only" type="button" data-module="logs">系統操作紀錄</button>
       <button class="nav-item hr-only" type="button" data-module="templates">信件範本</button>
     </nav>
     <div id="records-module">
@@ -53,7 +53,7 @@
       </section>
       <div id="arrangement-message" class="message" role="status" aria-live="polite"></div>
       <section class="panel table-panel"><div class="table-wrap"><table>
-        <thead><tr><th>案件／求職者</th><th>職缺／狀態</th><th>面試主管</th><th>地點</th><th>期待安排時間</th><th>HR 最終確認</th><th>操作</th></tr></thead>
+        <thead><tr><th>案件／求職者</th><th>職缺／狀態</th><th>面試主管</th><th>地點</th><th>期待安排時間</th><th>HR 最終確認</th><th>案件狀態</th><th>操作</th></tr></thead>
         <tbody id="arrangement-rows"></tbody>
       </table></div></section>
       <section class="panel calendar-panel" aria-labelledby="calendar-title">
@@ -72,10 +72,10 @@
         <p>點選事件可查看通知／日曆紀錄。未執行或建立失敗的日曆不會顯示；主管只能查看。Demo 共用全部主管的事件。</p>
       </section>
     </div>
-    <section id="logs-module" class="panel" hidden><h1>設定與紀錄</h1><p>包含通知、日曆結果、改期、取消及攔截紀錄。</p><pre id="audit-log"></pre></section>
+    <section id="logs-module" class="panel" hidden><h1>系統操作紀錄</h1><p>包含通知、日曆結果、改期、取消及攔截紀錄。</p><div class="table-wrap"><table class="audit-table"><thead><tr><th>時間</th><th>操作者</th><th>編號</th><th>操作類型</th><th>結果</th></tr></thead><tbody id="audit-log"></tbody></table></div></section>
     <section id="templates-module" class="panel" hidden>
       <h1>信件範本</h1>
-      <p>選取已確認且未結案的案件，按「套用面試通知信／預覽」開啟共用通知視窗並選好範本，再按「驗證與 HTML 預覽」查看信件。範本及預覽內容為唯讀；寄信與日曆皆為模擬。</p>
+      <p>選取已確認且未結案的案件，按「套用面試通知信／預覽」帶入求職者、面試安排及已保存的通知資料。未填寫姓氏／姓名時使用求職者全名，稱謂預填「先生/小姐」，請確認並補齊缺少的連結及 HR Email，再按「驗證與 HTML 預覽」查看信件。範本及預覽內容為唯讀；寄信與日曆皆為模擬。</p>
       <label>套用案件<select id="template-record"></select></label>
       <p id="template-message" role="status"></p>
       <button id="template-apply" class="primary" type="button" disabled>套用面試通知信／預覽</button>
@@ -83,13 +83,18 @@
       <details><summary>檢視 HTML 範本原始碼</summary><pre id="template-source"></pre></details>
     </section>
   </main>
+  <dialog id="reset-dialog">
+    <div class="dialog-heading"><h2>重置示範資料</h2><button type="button" class="icon-button close-dialog" aria-label="關閉">×</button></div>
+    <p>確定要清除目前異動並還原虛構示範資料嗎？</p>
+    <div class="dialog-actions"><button type="button" class="secondary close-dialog">取消</button><button id="confirm-reset" type="button" class="primary">確認重置</button></div>
+  </dialog>
   <dialog id="notification-dialog">
     <div class="dialog-heading"><h2 id="notification-title">通知信與模擬日曆</h2><button type="button" class="icon-button close-dialog" aria-label="關閉">×</button></div>
     <p class="callout">所有寄信與日曆操作均為模擬。主管 CC 使用 manager1～3@training.example.invalid 假地址，依主管順序對應。</p>
     <form id="notification-details-form">
       <fieldset id="notification-details-fields">
         <label>HTML 範本<select id="notice-template"><option value="">未選取／缺少範本（驗收用）</option></select></label>
-        <label>姓氏<input id="notice-surname"></label><label>稱謂<input id="notice-salutation" placeholder="先生／小姐"></label>
+        <label>姓氏／姓名<input id="notice-surname"></label><label>稱謂<input id="notice-salutation" placeholder="先生／小姐"></label>
         <label>面試前資料連結<input id="notice-preparation" type="text"></label>
         <label>會議連結<input id="notice-meeting" type="text"></label>
         <label>履歷連結<input id="notice-resume" type="text"></label>
@@ -111,7 +116,7 @@
   </dialog>
   <dialog id="add-dialog">
     <form id="add-form" method="dialog" novalidate>
-      <div class="dialog-heading"><div><p class="eyebrow">新增招募紀錄</p><h2>新增求職者資訊</h2></div><button class="icon-button" value="cancel" aria-label="關閉">×</button></div>
+      <div class="dialog-heading"><div><p class="eyebrow">新增招募紀錄</p><h2>新增求職者資訊</h2></div><button type="button" class="icon-button close-dialog" aria-label="關閉">×</button></div>
       <p class="callout">以 KEYIN 時間回溯 30 天（含邊界），不論案件狀態。Email 相同直接阻擋；手機／姓名相同須由 HR 核對。</p><label>姓名 <span class="required">必填</span><input id="candidate-name" type="text" maxlength="80" autocomplete="name"></label>
       <label>Email <span class="required">必填</span><input id="candidate-email" type="email" maxlength="160" autocomplete="email"></label>
       <label>手機 <span class="required">必填</span><input id="candidate-phone" type="tel" maxlength="30" autocomplete="tel"></label>
@@ -122,30 +127,30 @@
         <label class="checkbox"><input id="different-person-confirm" type="checkbox"> 我已核對既有資料，確認為不同人</label>
       </div>
       <p id="add-error" class="field-error" role="alert"></p>
-      <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">新增招募紀錄</button></div>
+      <div class="dialog-actions"><button type="button" class="secondary close-dialog">取消</button><button value="default" class="primary">新增招募紀錄</button></div>
     </form>
   </dialog>
   <dialog id="second-invitation-dialog">
     <form id="second-invitation-form" method="dialog" novalidate>
-      <div class="dialog-heading"><div><p class="eyebrow">P0-B｜人工執行</p><h2 id="second-invitation-title">執行二次邀約</h2></div><button class="icon-button" value="cancel" aria-label="關閉">×</button></div>
+      <div class="dialog-heading"><div><p class="eyebrow">P0-B｜人工執行</p><h2 id="second-invitation-title">執行二次邀約</h2></div><button type="button" class="icon-button close-dialog" aria-label="關閉">×</button></div>
       <p class="callout">提醒只代表案件已到期；儲存後才算 HR 已實際執行二邀。</p>
       <label>執行結果 <span class="required">必填</span><textarea id="second-invitation-result" rows="3" maxlength="300" placeholder="例如：已完成電話二邀，等待求職者回覆"></textarea></label>
       <p id="second-invitation-error" class="field-error" role="alert"></p>
-      <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">確認已執行二邀</button></div>
+      <div class="dialog-actions"><button type="button" class="secondary close-dialog">取消</button><button value="default" class="primary">確認已執行二邀</button></div>
     </form>
   </dialog>
   <dialog id="status-dialog">
     <form id="status-form" method="dialog" novalidate>
-      <div class="dialog-heading"><div><p class="eyebrow">狀態管理與更正</p><h2 id="status-dialog-title">更新狀態</h2></div><button class="icon-button" value="cancel" aria-label="關閉">×</button></div>
+      <div class="dialog-heading"><div><p class="eyebrow">狀態管理與更正</p><h2 id="status-dialog-title">更新狀態</h2></div><button type="button" class="icon-button close-dialog" aria-label="關閉">×</button></div>
       <label>新狀態 <span class="required">必填</span><select id="new-status" required></select></label>
-      <label id="interview-at-field" hidden>有效面試時間 <span class="required">必填</span><input id="interview-at" type="datetime-local"></label>
+      <label id="interview-at-field" hidden>有效面試時間 <span class="required">必填</span><select id="interview-at"></select><small>僅可選擇主管提供且尚未過期的時段。</small></label>
       <div id="rejection-fields" hidden>
         <label>婉拒種類 <span class="required">必填</span><select id="rejection-type"><option value="">請選擇</option><option>求職者婉拒</option><option>公司婉拒</option></select></label>
         <label>婉拒原因 <span class="required">必填</span><textarea id="rejection-reason" rows="3" maxlength="300"></textarea></label>
       </div>
       <label>異動原因（選填）<textarea id="status-reason" rows="3" maxlength="300" placeholder="例如：更正誤登狀態"></textarea></label>
       <p id="status-error" class="field-error" role="alert"></p>
-      <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">儲存狀態</button></div>
+      <div class="dialog-actions"><button type="button" class="secondary close-dialog">取消</button><button value="default" class="primary">儲存狀態</button></div>
     </form>
   </dialog>
   <dialog id="history-dialog">
@@ -155,24 +160,24 @@
   </dialog>
   <dialog id="new-case-dialog">
     <form id="new-case-form" method="dialog" novalidate>
-      <div class="dialog-heading"><div><p class="eyebrow">結案後再次面試</p><h2 id="new-case-dialog-title">另立新案</h2></div><button class="icon-button" value="cancel" aria-label="關閉">×</button></div>
-      <p class="callout">原案件及其結案資訊會保持不變；新案件會取得新的案件 ID 與 KEYIN 時間。</p>
+      <div class="dialog-heading"><div><p class="eyebrow">結案後再次面試</p><h2 id="new-case-dialog-title">另立新案</h2></div><button type="button" class="icon-button close-dialog" aria-label="關閉">×</button></div>
+      <p class="callout">距最近邀約須滿 30 天才能另立新案。原案件及結案資訊保持不變；新案件取得新的案件 ID 與 KEYIN 時間。</p>
       <label class="checkbox"><input id="new-case-confirm" type="checkbox"> 我已確認需為此求職者另立新案</label>
       <label>另立新案原因 <span class="required">必填</span><textarea id="new-case-reason" rows="3" maxlength="300"></textarea></label>
       <p id="new-case-error" class="field-error" role="alert"></p>
-      <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">建立新案件</button></div>
+      <div class="dialog-actions"><button type="button" class="secondary close-dialog">取消</button><button value="default" class="primary">建立新案件</button></div>
     </form>
   </dialog>
   <dialog id="arrangement-dialog">
     <form id="arrangement-form" method="dialog" novalidate>
-      <div class="dialog-heading"><div><p class="eyebrow">面試安排</p><h2 id="arrangement-title"></h2></div><button class="icon-button" value="cancel" aria-label="關閉">×</button></div>
+      <div class="dialog-heading"><div><p class="eyebrow">面試安排</p><h2 id="arrangement-title"></h2></div><button type="button" class="icon-button close-dialog" aria-label="關閉">×</button></div>
       <label>面試主管（最多三位，以逗號或換行分隔）<textarea id="interview-managers" rows="2"></textarea></label>
       <label>面試地點<select id="interview-location"><option value="">尚未安排</option><option>南港</option><option>板橋</option></select></label>
       <label>備註<textarea id="interview-notes" rows="2" maxlength="500" placeholder="例如：AI、上機考"></textarea></label>
       <label>期待安排時間（每行一個日期時間）<textarea id="expected-time-slots" rows="4" placeholder="2026-11-02 10:00"></textarea><small id="expected-time-help"></small></label>
-      <label id="confirmed-interview-field">HR 最終確認面試時間<input id="confirmed-interview-at" type="datetime-local"><small>只有 HR 可確認；儲存後狀態才會改為「確認面試」。</small></label>
+      <label id="confirmed-interview-field">HR 最終確認面試時間<select id="confirmed-interview-at"></select><small>只有 HR 可確認主管提供的未來時段；儲存後狀態才會改為「確認面試」。</small></label>
       <p id="arrangement-error" class="field-error" role="alert"></p>
-      <div class="dialog-actions"><button value="cancel" class="secondary">取消</button><button value="default" class="primary">儲存面試安排</button></div>
+      <div class="dialog-actions"><button type="button" class="secondary close-dialog">取消</button><button value="default" class="primary">儲存面試安排</button></div>
     </form>
   </dialog>
   <script defer src="app.js"></script>

@@ -16,6 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RecruitmentApiTests {
     @Autowired MockMvc mockMvc;
     @Autowired com.hytech.training.application.RecruitmentService service;
+    @Autowired com.hytech.training.infrastructure.RecruitmentStateRepository repository;
 
     @BeforeEach void reset() throws Exception {
         mockMvc.perform(post("/api/recruitment/demo/reset").contentType(MediaType.APPLICATION_JSON)
@@ -47,6 +48,7 @@ class RecruitmentApiTests {
 {"role":"HR","actorName":"測試 HR","newStatus":"EMAIL_CONTACT"}
 """))
                 .andExpect(status().isUnprocessableEntity());
+        service.record("REC-20260928-003").keyinAt = java.time.OffsetDateTime.now().minusDays(31);
         mockMvc.perform(post("/api/recruitment/records/REC-20260928-003/follow-up-cases").contentType(MediaType.APPLICATION_JSON)
                 .content("""
 {"role":"HR","actorName":"測試 HR","confirmed":true,"reason":"新職缺再次邀約"}
@@ -79,7 +81,43 @@ class RecruitmentApiTests {
                 .content("""
 {"role":"HR","actorName":"測試 HR","result":"電話二邀完成"}
 """))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.secondInvitationResult").value("電話二邀完成"));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.secondInvitationResult").value("電話二邀完成"))
+                .andExpect(jsonPath("$.status").value("SECOND_INVITATION_NO_RESPONSE"))
+                .andExpect(jsonPath("$.statusHistory[1].reason").value("執行二次邀約：電話二邀完成"));
+    }
+
+    @Test void 二邀後邀約列表立即同步且後續回覆可正常更新() throws Exception {
+        String id = "REC-20261018-001";
+        String endpoint = "/api/recruitment/records/" + id;
+        mockMvc.perform(post("/api/recruitment/second-invitation-schedule/run").contentType(MediaType.APPLICATION_JSON)
+                .content("""
+{"role":"HR","actorName":"測試 HR"}
+"""))
+                .andExpect(status().isOk());
+        mockMvc.perform(post(endpoint + "/second-invitation").contentType(MediaType.APPLICATION_JSON)
+                .content("""
+{"role":"HR","actorName":"測試 HR","result":"電話二邀完成"}
+"""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SECOND_INVITATION_NO_RESPONSE"))
+                .andExpect(jsonPath("$.secondInvitationAt").isNotEmpty());
+        mockMvc.perform(get("/api/recruitment"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.records[?(@.id == '" + id + "')].status")
+                        .value(org.hamcrest.Matchers.contains("SECOND_INVITATION_NO_RESPONSE")));
+        var restored = new com.hytech.training.application.RecruitmentService(repository);
+        org.junit.jupiter.api.Assertions.assertEquals("SECOND_INVITATION_NO_RESPONSE", restored.record(id).status);
+        mockMvc.perform(patch(endpoint + "/status").contentType(MediaType.APPLICATION_JSON)
+                .content("""
+{"role":"HR","actorName":"測試 HR","newStatus":"EMAIL_COMMUNICATING","reason":"求職者回覆願意面試"}
+"""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("EMAIL_COMMUNICATING"))
+                .andExpect(jsonPath("$.candidateRespondedAt").isNotEmpty());
+        mockMvc.perform(get("/api/recruitment"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.records[?(@.id == '" + id + "')].status")
+                        .value(org.hamcrest.Matchers.contains("EMAIL_COMMUNICATING")));
     }
 
     @Test void 時間確認中主管可保存多個期待時段但不可確認最終時間() throws Exception {

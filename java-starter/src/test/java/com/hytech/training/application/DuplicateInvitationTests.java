@@ -78,6 +78,8 @@ class DuplicateInvitationTests {
         var original = service.record(id);
         original.interviewAt = OffsetDateTime.ofInstant(instant, ZoneOffset.UTC).minusSeconds(1);
         repo().save(service.state());
+        original.keyinAt = OffsetDateTime.ofInstant(instant, ZoneOffset.UTC).minusDays(31);
+        repo().save(service.state());
         String before = json(original);
         for (String role : List.of("HR", "MANAGER")) {
             assertThrows(BusinessException.class, () -> service.updateStatus(id, new StatusUpdateRequest(role,"驗收","EMAIL_CONTACT",null,null,null,"重啟")));

@@ -17,7 +17,7 @@ public final class RecruitmentModels {
     public record ArrangementHistory(String actorRole, String actorName, List<String> fields,
                                      OffsetDateTime at) {}
     public record AuditEvent(String action, String role, String result, String recordId,
-                             String reason, OffsetDateTime at) {}
+                             String reason, OffsetDateTime at, String actorName) {}
     public record ScheduleRun(String id, String role, String actorName, OffsetDateTime at,
                               int createdCount, int eligibleCount) {}
 

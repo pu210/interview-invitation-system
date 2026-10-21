@@ -1,3 +1,4 @@
+.gitignore
 # macOS / Windows metadata
 .DS_Store
 Thumbs.db
@@ -33,11 +34,12 @@ java-starter/data/recruitment-state.json
 .vscode/
 
 # 排除資料夾與特定檔案
+DEMO_GUIDE.md
 data/
 docs/P0-D-ACCEPTANCE.md
-docs/p0-d-acceptance.jpg
 docs/EXPECTED-TIME-FIX.md
 docs/P0-E-ACCEPTANCE.md
-docs/expected-time-verification.png
-docs/p0-e-preview.png
 pom.p0f.xml
+docs/BUGFIX_REPORT_2026-10-21.md
+docs/SECOND_INVITATION_STATUS_VERIFICATION_2026-10-21.md
+docs/TEMPLATE_AUTOFILL_FIX_2026-10-21.md

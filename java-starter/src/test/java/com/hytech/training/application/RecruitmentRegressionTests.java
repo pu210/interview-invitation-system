@@ -65,4 +65,37 @@ class RecruitmentRegressionTests {
         assertEquals(complete.event.id, again.executeNotification(id, new NotificationRequest("HR", "HR", false, false)).notificationTask.event.id);
         assertEquals(3, again.record(id).notificationTask.attempts.size());
     }
+
+    @Test void followUpRequiresFull30DaysAndCannotReuseAnOldCaseToBypassNewInvitation() throws Exception {
+        RecruitmentService service = service("2026-10-21T02:00:00Z");
+        var original = service.record("REC-20260928-003");
+        original.keyinAt = OffsetDateTime.parse("2026-09-21T02:00:01Z");
+        repo().save(service.state());
+        String before = mapper.writeValueAsString(service.state().records);
+        var request = new FollowUpRequest("HR", "驗收 HR", true, "新職缺");
+        assertThrows(BusinessException.class, () -> service.createFollowUp(original.id, request));
+        assertEquals(before, mapper.writeValueAsString(repo().load().records));
+        RecruitmentService atBoundary = service("2026-10-21T02:00:01Z");
+        var created = atBoundary.createFollowUp(original.id, request);
+        assertEquals(original.id, created.linkedOriginalCaseId);
+        assertThrows(BusinessException.class, () -> atBoundary.createFollowUp(original.id, request));
+        assertEquals(created.id, service("2026-10-21T02:00:02Z").record(created.id).id);
+        assertEquals(original.status, atBoundary.record(original.id).status);
+    }
+
+    @Test void secondInvitationStatusHistoryAndActorSurviveRestartAndCannotExecuteTwice() {
+        RecruitmentService service = service("2026-10-21T02:00:00Z");
+        String id = "REC-20261018-001";
+        service.runSchedule(new ScheduleRequest("HR", "排程 HR"));
+        service.executeSecondInvitation(id, new SecondInvitationRequest("HR", "執行 HR", "電話二邀，等待回覆"));
+        RecruitmentService restarted = service("2026-10-21T02:01:00Z");
+        var stored = restarted.record(id);
+        assertEquals("SECOND_INVITATION_NO_RESPONSE", stored.status);
+        assertEquals("執行 HR", stored.statusHistory.getLast().actorName());
+        assertEquals("執行二次邀約：電話二邀，等待回覆", stored.statusHistory.getLast().reason());
+        assertEquals("執行 HR", restarted.state().auditEvents.getLast().actorName());
+        int historySize = stored.statusHistory.size();
+        assertThrows(BusinessException.class, () -> restarted.executeSecondInvitation(id, new SecondInvitationRequest("HR", "HR", "再執行")));
+        assertEquals(historySize, restarted.record(id).statusHistory.size());
+    }
 }
