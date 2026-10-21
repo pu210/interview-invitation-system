@@ -19,27 +19,39 @@
 
 ### 前端
 
-- JavaScript
+- 原生 HTML、CSS、JavaScript
 - 沿用 Starter 現有原生 JavaScript 架構
 - 不要求使用前端套件管理器
 - 優先使用瀏覽器既有能力，避免不必要的第三方套件
+- 目前入口為 `java-starter/src/main/resources/static/index.html`，載入 `styles.css` 與 `app.js`。
+- `recruitment-store.mjs` 是目前頁面未載入的舊版實作，暫時保留；不得作為新功能的開發依據或恢復為正式資料來源。
 
 ### 後端
 
 - Java 21
-- Spring Boot 3
+- Spring Boot 3.5.16（以 `java-starter/pom.xml` 為版本依據）
 - Maven Wrapper
-- 使用 RESTful API
+- 正式業務前後端溝通使用 REST API：`/api/recruitment/**`
 - 沿用 Java Starter 既有專案架構
-- 依實際需求實作 Controller、Service、DTO
+- 優先擴充既有 Controller、Service、Repository、請求 DTO 與資料模型，避免重複建立相同功能。
+- 沿用目前可運作的技術架構，不主動導入 Vue、React、MySQL、JPA 或其他新框架。
 
 ### 資料儲存
 
-- 使用瀏覽器 localStorage
-- 搭配初始 Demo Seed Data
+- 正式業務資料由 Spring Boot 後端透過 `RecruitmentStateRepository.java` 持久化為 JSON，搭配後端初始 Demo Seed Data。
+- `java-starter/src/main/resources/application.properties` 的 `recruitment.data-file` 預設為 `data/recruitment-state.json`；相對路徑以後端啟動工作目錄解析。啟動及重啟時須維持相同工作目錄或明確指定同一資料檔，避免誤用另一份資料。
+- 所有需要保存的案件、狀態、二邀、排程、面試安排及歷程等業務資料，均須納入後端資料模型並持久化；不得僅保存在前端變數或 localStorage。
+- localStorage 不作為正式業務資料來源；前端記憶體只保存 API 取得的畫面狀態或尚未送出的表單輸入。
 - 不使用 MySQL、PostgreSQL 等外部資料庫
 - 不自行加入 JPA 或其他資料庫 ORM
-- 沒有必要時不建立 Repository 層
+- 目前未使用 JPA、ORM 或正式關聯式資料庫；沿用既有 Repository 層，不另建平行的業務資料儲存機制。
+
+### 既有功能與擴充位置
+
+- 前三個已實作功能為 P0-A 狀態管理與更正、P0-B 首次邀約 24 小時提醒二邀、P0-C 角色權限與主管安排；後續功能必須與這些流程正常整合。
+- `RecruitmentController.java` 提供招募業務 API，`RecruitmentService.java` 處理業務規則及持久化呼叫，`RecruitmentModels.java` 定義共用資料，`RecruitmentStateRepository.java` 負責載入與保存。
+- `app.js` 透過 `fetch` 實際呼叫上述 API，操作成功後重新取得後端資料並渲染。
+- 既有 `/api/scenarios/**` 為 Starter 情境介面，`/api/interview-arrangements/validate-update` 為相容驗證端點；不得以其存在或驗證通過代替正式業務流程的串接及保存。
 
 ## 3. 前後端職責
 
@@ -48,62 +60,67 @@
 - 負責畫面渲染、表單操作及使用者互動
 - 提供 Demo 角色切換功能
 - 顯示符合角色權限的操作介面
-- 管理 localStorage 資料
-- 呼叫必要的 Spring Boot API
+- 呼叫 Spring Boot REST API 取得與修改業務資料，以後端回應為準；不得以本機資料或模擬成功取代 API 成功結果。
 
 ### Spring Boot 後端
 
-- 提供新人訓要求的 Java 後端功能
-- 負責適合集中處理的業務規則
-- 實作必要的 REST API
-- 驗證 API 請求資料及業務規則
-- 不直接存取瀏覽器 localStorage
+- 集中處理業務規則、角色權限、欄位白名單與結案鎖定。
+- 實作與前端串接的 REST API，驗證請求資料及業務條件。
+- 透過既有 Repository 保存所有需持久化的業務資料，啟動時載入既有資料。
+- 負責二邀每日 10:00（`Asia/Taipei`）排程與手動排程的共用邏輯、提醒去重及執行紀錄保存；自動排程需後端持續運行，不宣稱停機時仍會執行。
 
 重要原則：
 
 - 不為了使用後端而過度設計。
 - 若功能規格要求後端驗證或處理，不得僅以前端邏輯替代。
 - 必須明確區分前端介面權限與後端 API 權限。
+- 新增功能時，同時評估前端、後端、REST API、資料持久化及角色權限，不得只完成畫面、模擬操作或未串接的 API。
+- 新增或修改 API 時，確認前端有實際呼叫、後端有對應業務邏輯，且需保存的結果已寫入資料檔。
 
 ## 4. Demo 資料規範
 
 - 專案需提供初始 Demo 種子資料。
-- 首次使用且 localStorage 尚無資料時，自動載入種子資料。
+- 後端啟動且指定資料檔不存在時，由 `RecruitmentService` 建立種子資料並透過 Repository 保存。
 - 已有有效資料時，不得因頁面重新整理而覆蓋。
 - 應提供可供 Demo 使用的「重置示範資料」機制。
 - 種子資料應包含不同聯繫狀態與必要角色情境。
 - Demo 資料不得包含真實求職者個資。
-- 如需調整種子資料結構，應考慮既有 localStorage 資料的相容性。
+- 重置須由 HR 經既有後端 API 執行；不得於頁面載入、角色切換或一般後端重啟時自動重置。
+- 如需調整資料結構，須考慮既有 JSON 資料的相容性；載入失敗不得靜默以種子資料覆蓋。
+- 不刪除舊檔案或既有資料；測試使用隔離資料檔，不得以正式 Demo 資料執行重置測試。
 
 ## 5. 業務邏輯規範
 
-- 核心狀態與狀態轉換依 SYSTEM_REQUIREMENTS.md 為準。
+- 核心狀態與狀態轉換依 `java-starter/SYSTEM_REQUIREMENTS.md` 為準。
 - 狀態須支援需求規格允許的退回與變更。
 - 二次邀約以規格定義的 KEYIN 時間計算 24 小時。
 - 二次邀約後未回覆的判斷依需求規格執行。
 - 確認面試後仍允許符合規格的時間異動或取消。
 - 流程完成條件必須符合需求規格。
 - 不得任意簡化或改寫業務規則。
+- 涉及狀態異動、二次邀約、排程、面試安排或歷程紀錄時，必須確認資料已持久化，重新整理頁面或重新啟動後端後仍可恢復。
 
 ## 6. 角色權限規範
 
-- 角色定義及操作權限以 ROLE_PERMISSIONS.md 為準。
+- 角色定義及操作權限以 `java-starter/ROLE_PERMISSIONS.md` 為準。
 - Demo 使用角色切換，不要求實際登入。
 - 主管允許唯讀查看邀約紀錄，不得修改。
 - 所有按鈕及可操作功能必須依角色權限控制。
 - 角色切換不代表真實身分認證或正式安全機制。
-- 若後端提供需限制權限的 API，必須依規格實作相應驗證，不得僅依賴隱藏前端按鈕。
+- 後端 API 必須依規格驗證角色、可寫欄位與結案狀態，不得僅依賴隱藏前端按鈕；越權或業務驗證失敗不得部分更新案件或留下額外業務結果，攔截紀錄依需求保存。
 
 ## 7. 專案規格文件
 
 開發前必須閱讀：
 
-- docs/SYSTEM_REQUIREMENTS.md
-- docs/ROLE_PERMISSIONS.md
+- `java-starter/SYSTEM_REQUIREMENTS.md`（功能需求及驗收依據）
+- `java-starter/ROLE_PERMISSIONS.md`（角色與欄位權限依據）
 
 若實際檔案名稱或路徑不同，應依專案現有檔案調整。
 
 開發時應以文件為依據，不自行增加需求或改變驗收標準。
+
+需求文件中的 localStorage 是建議方案而非強制架構；本專案已採用後端 JSON 持久化，技術實作依本文件及現有程式碼延續。純前端排程的限制描述不代表目前採用純前端排程。不得因此改動需求文件的業務需求或權限規則。
 
 ## 8. Codex 開發規則
 
@@ -113,10 +130,12 @@
 4. 一次完成一項可驗證功能。
 5. 不任意增加框架、資料庫或雲端服務。
 6. 不擅自修改角色權限及狀態規則。
-7. 修改完成後執行可行的測試。
+7. 每次功能完成後，執行可行的建置與測試，確認前三個已實作功能及既有流程未受影響。
 8. 回報新增與修改的檔案。
 9. 回報測試結果及尚未完成的項目。
 10. 遇到需求衝突或關鍵規則不明確時，先提出問題。
+11. 優先完成 AI 新人訓六項核心功能並維持穩定 Demo，不進行非必要的架構重構或技術遷移。
+12. 檢查程式碼不代表已通過驗收；不得將尚未完成的 P0 功能或未執行的測試宣稱為完成。
 
 ## 9. 測試規範
 
@@ -126,11 +145,17 @@
 - 二次邀約 24 小時判斷
 - 面試時間變更與取消
 - 角色權限
-- localStorage 資料保存
+- 後端 JSON 資料保存，以及重新整理頁面、重新啟動後端後的資料恢復
 - 首次載入種子資料
 - Demo 資料重置
 
 應優先驗證實際操作流程及六項核心驗收功能。
+
+- 在 `java-starter/` 使用 Maven Wrapper；Windows 建置與測試可執行 `.\mvnw.cmd "-Drecruitment.data-file=target/test-data/recruitment-state.json" verify`（需 Java 21）。測試資料檔須與實際 Demo 資料分離；現有 API 測試會呼叫重置介面，執行前必須確認隔離設定生效。
+- 新增或修改 API 必須驗證實際頁面呼叫與後端結果，並涵蓋直接呼叫 API 的權限及業務規則負向情境。
+- 驗證提醒／操作去重、失敗時原資料不變、各角色及模組資料一致；涉及持久化時，須重新載入同一資料檔或重啟後端確認，不能只查詢同一程序的記憶體狀態。
+- `recruitment-store.test.mjs` 測試的是舊版實作，不能替代現行 Spring Boot API、持久化及頁面整合驗證；僅有相容驗證端點測試也不足以證明正式寫入流程通過。
+- 文件規範調整須核對引用路徑、程式碼架構及修改範圍；不因只修改文件而執行會重置既有資料的操作。
 
 ## 10. 回覆規範
 
