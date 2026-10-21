@@ -148,8 +148,6 @@ public final class RecruitmentService {
         Set<String> allowed = "HR".equals(input.role()) ? HR_FIELDS : "MANAGER".equals(input.role()) ? MANAGER_FIELDS : Set.of();
         if (input.changedFields() == null || input.changedFields().isEmpty()) throw new BusinessException("沒有可儲存的面試安排異動。");
         input.changedFields().stream().filter(field -> !allowed.contains(field)).findFirst().ifPresent(field -> { throw new BusinessException("目前角色無權修改欄位：" + field + "。"); });
-        if ("MANAGER".equals(input.role()) && "TIME_CONFIRMING".equals(current.status) && input.changedFields().contains("expectedTimeSlots"))
-            throw new BusinessException("時間確認中，主管不可變更期待安排時間。");
         List<String> managers = current.interviewManagers;
         String location = current.interviewLocation;
         String notes = current.interviewNotes;

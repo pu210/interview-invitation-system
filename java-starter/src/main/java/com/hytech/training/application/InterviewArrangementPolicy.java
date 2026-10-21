@@ -31,9 +31,6 @@ public final class InterviewArrangementPolicy {
         if (request.interviewLocation() != null && !request.interviewLocation().isBlank()
                 && !Set.of("南港", "板橋").contains(request.interviewLocation()))
             errors.put("interviewLocation", "面試地點僅限南港或板橋。");
-        if ("MANAGER".equals(request.role()) && "TIME_CONFIRMING".equals(request.status())
-                && request.changedFields() != null && request.changedFields().contains("expectedTimeSlots"))
-            errors.put("expectedTimeSlots", "時間確認中，主管不可變更期待安排時間。");
         if (request.expectedTimeSlots() != null) {
             for (String slot : request.expectedTimeSlots()) {
                 try { OffsetDateTime.parse(slot); }

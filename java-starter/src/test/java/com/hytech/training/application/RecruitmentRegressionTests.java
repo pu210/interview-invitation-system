@@ -35,8 +35,13 @@ class RecruitmentRegressionTests {
         RecruitmentService service = service("2026-10-21T02:00:00Z");
         String id = "REC-20261018-001";
         service.updateStatus(id, new StatusUpdateRequest("HR", "HR", "TIME_CONFIRMING", null, null, null, "前進"));
-        assertThrows(BusinessException.class, () -> service.updateArrangement(id, new ArrangementUpdateRequest("MANAGER", "甲", List.of("expectedTimeSlots"), null, null, null, List.of("2026-11-01T10:00:00+08:00"), null)));
-        assertTrue(service.record(id).expectedTimeSlots.isEmpty());
+        var slots = List.of("2026-11-01T10:00:00+08:00", "2026-11-02T14:00:00+08:00");
+        service.updateArrangement(id, new ArrangementUpdateRequest("MANAGER", "甲", List.of("expectedTimeSlots"), null, null, null, slots, null));
+        var reloaded = service("2026-10-21T02:00:00Z").record(id);
+        assertEquals(slots.stream().map(value -> OffsetDateTime.parse(value).toInstant()).toList(),
+                reloaded.expectedTimeSlots.stream().map(OffsetDateTime::toInstant).toList());
+        assertEquals("TIME_CONFIRMING", reloaded.status);
+        assertNull(reloaded.interviewAt);
         service.updateStatus(id, new StatusUpdateRequest("HR", "HR", "EMAIL_COMMUNICATING", null, null, null, "退回"));
         assertEquals("EMAIL_COMMUNICATING", service("2026-10-21T02:00:00Z").record(id).status);
         service.updateArrangement(id, new ArrangementUpdateRequest("MANAGER", "甲", List.of("interviewManagers", "interviewLocation"), List.of("甲", "乙", "丙"), "南港", null, null, null));

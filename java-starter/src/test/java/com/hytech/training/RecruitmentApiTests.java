@@ -82,6 +82,29 @@ class RecruitmentApiTests {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.secondInvitationResult").value("電話二邀完成"));
     }
 
+    @Test void 時間確認中主管可保存多個期待時段但不可確認最終時間() throws Exception {
+        String endpoint = "/api/recruitment/records/REC-20261012-002";
+        mockMvc.perform(put(endpoint + "/arrangement").contentType(MediaType.APPLICATION_JSON)
+                .content("""
+{"role":"MANAGER","actorName":"主管","changedFields":["expectedTimeSlots"],"expectedTimeSlots":["2026-11-01T10:00:00+08:00","2026-11-02T14:00:00+08:00"]}
+"""))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.expectedTimeSlots.length()").value(2))
+                .andExpect(jsonPath("$.status").value("TIME_CONFIRMING"));
+        mockMvc.perform(put(endpoint + "/arrangement").contentType(MediaType.APPLICATION_JSON)
+                .content("""
+{"role":"MANAGER","actorName":"主管","changedFields":["expectedTimeSlots","confirmedInterviewAt"],"expectedTimeSlots":[],"confirmedInterviewAt":"2026-11-01T10:00:00+08:00"}
+"""))
+                .andExpect(status().isUnprocessableEntity());
+        mockMvc.perform(put(endpoint + "/arrangement").contentType(MediaType.APPLICATION_JSON)
+                .content("""
+{"role":"MANAGER","actorName":"主管","changedFields":["expectedTimeSlots"],"expectedTimeSlots":["invalid"]}
+"""))
+                .andExpect(status().isUnprocessableEntity());
+        mockMvc.perform(get(endpoint)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.expectedTimeSlots.length()").value(2))
+                .andExpect(jsonPath("$.status").value("TIME_CONFIRMING"));
+    }
+
     @Test void 面試安排越權或第四位主管皆整筆拒絕() throws Exception {
         mockMvc.perform(put("/api/recruitment/records/REC-20261018-001/arrangement").contentType(MediaType.APPLICATION_JSON)
                 .content("""

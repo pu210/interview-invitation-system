@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>面談邀約管理系統</title>
+  <title>面試邀約管理系統</title>
   <link rel="stylesheet" href="styles.css">
   <style>[hidden]{display:none!important}</style>
 </head>
 <body>
   <header class="topbar">
-    <div><span class="product">面談邀約管理系統</span><span class="environment">Demo</span></div>
+    <div><span class="product">面試邀約管理系統</span><span class="environment">Demo</span></div>
     <label class="role-switcher" for="current-role">目前角色
       <select id="current-role"><option value="HR">HR</option><option value="MANAGER">主管</option></select>
     </label>
@@ -23,7 +23,7 @@
     </nav>
     <div id="records-module">
     <section class="page-heading">
-      <div><p class="eyebrow">P0-A／P0-B｜邀約管理</p><h1>邀約紀錄</h1><p id="permission-note">HR 可管理狀態及處理到期的二次邀約提醒。</p></div>
+      <div><h1>邀約紀錄</h1><p id="permission-note">HR 可管理狀態及處理到期的二次邀約提醒。</p></div>
       <div class="heading-actions hr-only">
         <button id="run-schedule" class="secondary" type="button">執行今日排程</button>
         <button id="reset-demo" class="secondary" type="button">重置示範資料</button>
@@ -49,7 +49,7 @@
     </div>
     <div id="arrangements-module" hidden>
       <section class="page-heading">
-        <div><p class="eyebrow">P0-C｜角色權限與主管安排</p><h1>面試安排總表</h1><p id="arrangement-permission-note"></p></div>
+        <div><h1>面試安排總表</h1><p id="arrangement-permission-note"></p></div>
       </section>
       <div id="arrangement-message" class="message" role="status" aria-live="polite"></div>
       <section class="panel table-panel"><div class="table-wrap"><table>
@@ -58,14 +58,22 @@
       </table></div></section>
     </div>
     <section id="logs-module" class="panel" hidden><h1>設定與紀錄</h1><p>包含通知、日曆結果、改期、取消及攔截紀錄。</p><pre id="audit-log"></pre></section>
-    <section id="templates-module" class="panel" hidden><h1>信件範本</h1><p>單一內建面試通知信；可於已確認面試案件選取、帶入資料並預覽。</p><pre id="template-source"></pre></section>
+    <section id="templates-module" class="panel" hidden>
+      <h1>信件範本</h1>
+      <p>選取已確認且未結案的案件，帶入資料、驗證並預覽。範本及預覽內容為唯讀；寄信與日曆皆為模擬。</p>
+      <label>套用案件<select id="template-record"></select></label>
+      <p id="template-message" role="status"></p>
+      <button id="template-apply" class="primary" type="button" disabled>套用面試通知信／預覽</button>
+      <p>必填變數：{{姓氏}}、{{先生/小姐}}、{{面試時間}}、{{面試前資料}}。面試時間使用 HR 最終確認時間（Asia/Taipei）。</p>
+      <details><summary>檢視 HTML 範本原始碼</summary><pre id="template-source"></pre></details>
+    </section>
   </main>
   <dialog id="notification-dialog">
     <div class="dialog-heading"><h2 id="notification-title">通知信與模擬日曆</h2><button type="button" class="icon-button close-dialog" aria-label="關閉">×</button></div>
     <p class="callout">所有寄信與日曆操作均為模擬。主管 CC 使用 manager1～3@training.example.invalid 假地址，依主管順序對應。</p>
     <form id="notification-details-form">
       <fieldset id="notification-details-fields">
-        <label>HTML 範本<select id="notice-template"><option value="interview-notice">面試通知信（模擬）</option><option value="">未選取／缺少範本（驗收用）</option></select></label>
+        <label>HTML 範本<select id="notice-template"><option value="">未選取／缺少範本（驗收用）</option></select></label>
         <label>姓氏<input id="notice-surname"></label><label>稱謂<input id="notice-salutation" placeholder="先生／小姐"></label>
         <label>面試前資料連結<input id="notice-preparation" type="text"></label>
         <label>會議連結<input id="notice-meeting" type="text"></label>
@@ -75,14 +83,15 @@
       </fieldset>
     </form>
     <div id="notice-controls">
-      <p>先儲存資料，再預覽／執行。改期請使用「編輯安排」，取消請更新狀態為「婉拒」並填寫原因。</p>
+      <p>預覽／執行時會先保存目前表單，並由後端重新檢查。改期請使用「編輯安排」，取消請更新狀態為「婉拒」並填寫原因。</p>
       <label class="checkbox"><input id="notice-fail-email" type="checkbox">模擬 Email 失敗</label>
       <label class="checkbox"><input id="notice-fail-calendar" type="checkbox">模擬日曆失敗</label>
       <div class="dialog-actions"><button id="notice-preview" type="button" class="secondary">驗證與 HTML 預覽</button><button id="notice-execute" type="button" class="primary">執行／僅重試未成功項目</button></div>
     </div>
+    <p id="notice-context" class="callout"></p>
     <p id="notice-error" class="field-error" role="alert" style="white-space:pre-wrap"></p>
-    <pre id="notice-results" style="white-space:pre-wrap"></pre>
     <iframe id="notice-html" title="通知信 HTML 預覽" sandbox="" style="width:100%;height:260px;border:1px solid #ddd" hidden></iframe>
+    <pre id="notice-results" style="white-space:pre-wrap"></pre>
   </dialog>
   <dialog id="add-dialog">
     <form id="add-form" method="dialog" novalidate>

@@ -29,13 +29,13 @@ class InterviewArrangementApiTests {
                 .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.errors.confirmedInterviewAt").exists());
     }
 
-    @Test void 第四位主管與時間確認中改期待時間會被後端拒絕() throws Exception {
+    @Test void 第四位主管會被後端拒絕() throws Exception {
         mockMvc.perform(post("/api/interview-arrangements/validate-update").contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"role":"MANAGER","status":"TIME_CONFIRMING","closed":false,"changedFields":["interviewManagers","expectedTimeSlots"],"interviewManagers":["甲","乙","丙","丁"],"expectedTimeSlots":["2026-11-01T10:00:00+08:00"]}
                         """))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.errors.interviewManagers").exists())
-                .andExpect(jsonPath("$.errors.expectedTimeSlots").exists());
+                .andExpect(jsonPath("$.errors.expectedTimeSlots").doesNotExist());
     }
 }

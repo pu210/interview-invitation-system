@@ -33,6 +33,7 @@ public final class NotificationRenderer {
         if (!"INTERVIEW_CONFIRMED".equals(record.status)) errors.add("HR 尚未確認面試。");
         if (record.interviewAt == null || record.interviewCancelled) errors.add("缺少有效面試時間。");
         if (!email(record.candidate.email())) errors.add("求職者 Email 格式無效。");
+        required(errors, record.candidate.position(), "應徵職缺");
         if (record.interviewManagers.isEmpty()) errors.add("缺少面試主管。");
         if (!("南港".equals(record.interviewLocation) || "板橋".equals(record.interviewLocation))) errors.add("缺少有效面試地點（南港／板橋）。");
         NotificationDetails details = record.notificationDetails;
@@ -51,7 +52,7 @@ public final class NotificationRenderer {
             Map<String, String> values = Map.of("姓氏", details.surname(), "先生/小姐", details.salutation(),
                     "面試時間", time, "面試前資料", details.preparationUrl(), "職缺", record.candidate.position(), "地點", record.interviewLocation);
             Matcher variables = Pattern.compile("\\{\\{([^{}]+)}}").matcher(TEMPLATE);
-            html = variables.replaceAll(match -> Matcher.quoteReplacement(escape(values.get(match.group(1)))));
+            html = variables.replaceAll(match -> Matcher.quoteReplacement(escape(values.getOrDefault(match.group(1), "{{" + match.group(1) + "}}"))));
             if (html.contains("{{") || html.contains("}}")) { errors.add("信件含未替換變數。"); html = null; }
         }
         return new Preview(errors, html, record.candidate.email(), managerEmails(record));
