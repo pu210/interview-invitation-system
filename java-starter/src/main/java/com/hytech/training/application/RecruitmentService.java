@@ -14,6 +14,7 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -51,34 +52,62 @@ public final class RecruitmentService {
     }
 
     public synchronized RecruitmentRecord create(CreateRequest input) {
-        requireHr(input.role(), "只有 HR 可以新增招募紀錄。");
-        String name = text(input.name(), "姓名為必填。"), email = text(input.email(), "Email 為必填。").toLowerCase();
+        return create(input, false);
+    }
+    private RecruitmentRecord create(CreateRequest input, boolean decisionOnly) {
+        if (!"HR".equals(input.role())) throw blocked(null, input.role(), "只有 HR 可以新增招募紀錄。");
+        String actor = text(input.actorName(), "缺少操作人。");
+        String name = text(input.name(), "姓名為必填。"), email = text(input.email(), "Email 為必填。").toLowerCase(Locale.ROOT);
         String phone = text(input.phone(), "手機為必填。"), position = text(input.position(), "應徵職缺為必填。");
         if (!email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) throw new BusinessException("Email 格式不正確。");
         String digits = phone.replaceAll("[^0-9]", "");
         if (digits.length() < 8 || digits.length() > 15) throw new BusinessException("手機格式不正確，請輸入 8 至 15 位數字。");
         OffsetDateTime now = now();
         List<RecruitmentRecord> recent = state.records.stream().filter(record ->
-                !record.keyinAt.isAfter(now) && Duration.between(record.keyinAt, now).toDays() <= 30).toList();
-        recent.stream().filter(record -> record.candidate.email().equalsIgnoreCase(email)).findFirst().ifPresent(record -> {
-            throw new BusinessException("30 天內重複邀約：Email 與案件 " + record.id + " 相同，無法新增。");
+                !record.keyinAt.isAfter(now) && !record.keyinAt.isBefore(now.minusDays(30))).toList();
+        recent.stream().filter(record -> same(record.candidate.email(), email)).findFirst().ifPresent(record -> {
+            throw blocked(record.id, input.role(), "30 天內重複邀約：Email 與案件 " + record.id + " 相同，無法新增。");
         });
-        List<String> possible = recent.stream().filter(record -> record.candidate.phone().equals(phone)
-                || record.candidate.name().equals(name)).map(record -> record.id).toList();
-        if (!possible.isEmpty() && !input.differentPersonConfirmed())
-            throw new BusinessException("可能重複邀約：手機或姓名與 " + String.join("、", possible) + " 相同。請核對並確認為不同人。");
+        List<DuplicateMatch> possible = recent.stream().filter(record -> samePhone(record.candidate.phone(), phone)
+                || same(record.candidate.name(), name)).map(record -> new DuplicateMatch(record.id, record.candidate,
+                record.keyinAt, record.status, samePhone(record.candidate.phone(), phone) ? "手機" : "姓名")).toList();
+        if (!possible.isEmpty() && !input.differentPersonConfirmed()) {
+            audit("DUPLICATE_CHECK", input.role(), "BLOCKED", null,
+                    "可能重複邀約；比對案件：" + possible.stream().map(DuplicateMatch::id).toList(), now); save();
+            throw new DuplicateException(possible);
+        }
+        if (decisionOnly) throw new BusinessException("目前沒有可能重複案件，請重新檢查。");
         RecruitmentRecord created = baseRecord(new Candidate(name, email, phone, position), now);
-        created.statusHistory.add(new StatusHistory(null, created.status, input.role(), text(input.actorName(), "缺少操作人。"), now, "建立招募紀錄"));
+        created.statusHistory.add(new StatusHistory(null, created.status, input.role(), actor, now, "建立招募紀錄"));
+        if (!possible.isEmpty()) audit("DUPLICATE_DECISION", input.role(), "DIFFERENT_PERSON", created.id,
+                actor + " 確認不同人；比對案件：" + possible.stream().map(DuplicateMatch::id).toList(), now);
         state.records.add(0, created);
         audit("CREATE_RECORD", input.role(), "SUCCEEDED", created.id, null, now);
         save();
         return created;
     }
 
+    // Same-person confirmation records the decision without creating any business record.
+    public synchronized void confirmSamePerson(CreateRequest input) {
+        if (!"HR".equals(input.role())) throw blocked(null, input.role(), "只有 HR 可以確認重複邀約。");
+        String actor = text(input.actorName(), "缺少操作人。");
+        try {
+            // Reuse all create validations, but force the duplicate warning before any insertion.
+            CreateRequest check = new CreateRequest(input.role(), actor, input.name(), input.email(), input.phone(), input.position(), false);
+            create(check, true);
+        } catch (DuplicateException duplicate) {
+            audit("DUPLICATE_DECISION", input.role(), "SAME_PERSON", null,
+                    actor + " 確認同一人，不新增；比對案件：" + duplicate.matches.stream().map(DuplicateMatch::id).toList(), now());
+            save();
+        }
+    }
+    private boolean same(String left, String right) { return left != null && !left.isBlank() && right != null && !right.isBlank() && left.trim().equalsIgnoreCase(right.trim()); }
+    private boolean samePhone(String left, String right) { return left != null && right != null && same(left.replaceAll("[^0-9]", ""), right.replaceAll("[^0-9]", "")); }
+
     public synchronized RecruitmentRecord updateStatus(String id, StatusUpdateRequest input) {
-        requireHr(input.role(), "主管僅能唯讀查看邀約紀錄，不能修改招募狀態。");
+        if (!"HR".equals(input.role())) throw blocked(id, input.role(), "主管僅能唯讀查看邀約紀錄，不能修改招募狀態。");
         RecruitmentRecord current = record(id);
-        requireOpen(current);
+        requireOpen(current, input.role());
         String actor = text(input.actorName(), "缺少操作人。");
         if (!STATUSES.contains(input.newStatus())) throw new BusinessException("請選擇有效的招募狀態。");
         if (current.status.equals(input.newStatus())) throw new BusinessException("新狀態與目前狀態相同，沒有需要儲存的異動。");
@@ -104,10 +133,11 @@ public final class RecruitmentService {
     }
 
     public synchronized RecruitmentRecord createFollowUp(String id, FollowUpRequest input) {
-        requireHr(input.role(), "只有 HR 可以對已結案案件另立新案。");
+        if (!"HR".equals(input.role())) throw blocked(id, input.role(), "只有 HR 可以對已結案案件另立新案。");
         RecruitmentRecord original = record(id);
-        if (!isClosed(original)) throw new BusinessException("只有已結案案件可以使用另立新案入口。");
-        if (!input.confirmed()) throw new BusinessException("請先確認需要另立新案。");
+        if (!isClosed(original)) throw blocked(id, input.role(), "只有已結案案件可以使用另立新案入口。");
+        if (!input.confirmed()) throw blocked(id, input.role(), "請先確認需要另立新案。");
+        if (input.reason() == null || input.reason().isBlank()) throw blocked(id, input.role(), "另立新案原因為必填。");
         String reason = text(input.reason(), "另立新案原因為必填。"), actor = text(input.actorName(), "缺少操作人。");
         OffsetDateTime now = now(); RecruitmentRecord created = baseRecord(original.candidate, now);
         created.linkedOriginalCaseId = original.id; created.newCaseReason = reason;
@@ -133,7 +163,7 @@ public final class RecruitmentService {
     public void scheduledRun() { runSchedule(new ScheduleRequest("HR", "系統每日排程")); }
 
     public synchronized RecruitmentRecord executeSecondInvitation(String id, SecondInvitationRequest input) {
-        requireHr(input.role(), "只有 HR 可以執行二次邀約。"); RecruitmentRecord current = record(id); requireOpen(current);
+        if (!"HR".equals(input.role())) throw blocked(id, input.role(), "只有 HR 可以執行二次邀約。"); RecruitmentRecord current = record(id); requireOpen(current, input.role());
         if (current.candidateRespondedAt != null) throw new BusinessException("求職者已回覆，不可執行二次邀約。");
         if (current.secondInvitationAt != null) throw new BusinessException("此案件已執行二次邀約，不可重複執行。");
         if (current.secondInvitationReminderAt == null || !needsSecondInvitation(current, now())) throw new BusinessException("此案件目前不符合二次邀約條件。");
@@ -143,11 +173,11 @@ public final class RecruitmentService {
     }
 
     public synchronized RecruitmentRecord updateArrangement(String id, ArrangementUpdateRequest input) {
-        RecruitmentRecord current = record(id); requireOpen(current);
+        RecruitmentRecord current = record(id); requireOpen(current, input.role());
         String actor = text(input.actorName(), "缺少操作人。");
         Set<String> allowed = "HR".equals(input.role()) ? HR_FIELDS : "MANAGER".equals(input.role()) ? MANAGER_FIELDS : Set.of();
         if (input.changedFields() == null || input.changedFields().isEmpty()) throw new BusinessException("沒有可儲存的面試安排異動。");
-        input.changedFields().stream().filter(field -> !allowed.contains(field)).findFirst().ifPresent(field -> { throw new BusinessException("目前角色無權修改欄位：" + field + "。"); });
+        input.changedFields().stream().filter(field -> !allowed.contains(field)).findFirst().ifPresent(field -> { throw blocked(id, input.role(), "目前角色無權修改欄位：" + field + "。"); });
         List<String> managers = current.interviewManagers;
         String location = current.interviewLocation;
         String notes = current.interviewNotes;
@@ -180,8 +210,8 @@ public final class RecruitmentService {
 
     public synchronized RecruitmentRecord updateNotificationDetails(String id, NotificationDetailsRequest input) {
         RecruitmentRecord current = notificationGuard(id, input.role(), input.actorName());
-        if (current.notificationTask != null) throw blocked(id, input.role(), "通知已開始執行，不能更改通知內容；改期請使用面試安排。");
-        if (input.details() == null) throw blocked(id, input.role(), "缺少通知資料。");
+        if (current.notificationTask != null) throw notificationBlocked(id, input.role(), "通知已開始執行，不能更改通知內容；改期請使用面試安排。");
+        if (input.details() == null) throw notificationBlocked(id, input.role(), "缺少通知資料。");
         current.notificationDetails = input.details();
         audit("UPDATE_NOTIFICATION_DETAILS", input.role(), "SUCCEEDED", id, null, now());
         save(); return current;
@@ -192,7 +222,7 @@ public final class RecruitmentService {
     public synchronized RecruitmentRecord executeNotification(String id, NotificationRequest input) {
         RecruitmentRecord current = notificationGuard(id, input.role(), input.actorName());
         NotificationRenderer.Preview preview = NotificationRenderer.preview(current);
-        if (!preview.errors().isEmpty()) throw blocked(id, input.role(), String.join("\n", preview.errors()));
+        if (!preview.errors().isEmpty()) throw notificationBlocked(id, input.role(), String.join("\n", preview.errors()));
         NotificationTask task = current.notificationTask;
         if (task == null) {
             task = new NotificationTask(); task.id = "NOTICE-" + UUID.randomUUID();
@@ -224,10 +254,13 @@ public final class RecruitmentService {
     private RecruitmentRecord notificationGuard(String id, String role, String actor) {
         try { requireHr(role, "只有 HR 可以操作通知信與模擬日曆。");
             RecruitmentRecord current = record(id); requireOpen(current); text(actor, "缺少操作人。"); return current;
-        } catch (BusinessException ex) { throw blocked(id, role, ex.getMessage()); }
+        } catch (BusinessException ex) { throw notificationBlocked(id, role, ex.getMessage()); }
+    }
+    private BusinessException notificationBlocked(String id, String role, String reason) {
+        audit("NOTIFICATION_BLOCKED", role, "BLOCKED", id, reason, now()); save(); return new BusinessException(reason);
     }
     private BusinessException blocked(String id, String role, String reason) {
-        audit("NOTIFICATION_BLOCKED", role, "BLOCKED", id, reason, now()); save(); return new BusinessException(reason);
+        audit("OPERATION_BLOCKED", role, "BLOCKED", id, reason, now()); save(); return new BusinessException(reason);
     }
     private void notificationAttempt(RecruitmentRecord current, String item, String result, String reason, String actor) {
         current.notificationTask.attempts.add(new NotificationAttempt(item, result, reason, actor, now()));
@@ -258,6 +291,7 @@ public final class RecruitmentService {
     public boolean isClosed(RecruitmentRecord record) { return "REJECTED".equals(record.status) || "INTERVIEW_CONFIRMED".equals(record.status) && !record.interviewCancelled && record.interviewAt != null && record.interviewAt.isBefore(now()); }
     private boolean needsSecondInvitation(RecruitmentRecord record, OffsetDateTime now) { return Duration.between(record.keyinAt, now).compareTo(Duration.ofHours(24)) > 0 && record.candidateRespondedAt == null && record.secondInvitationAt == null && !isClosedAt(record, now); }
     private boolean isClosedAt(RecruitmentRecord record, OffsetDateTime now) { return "REJECTED".equals(record.status) || "INTERVIEW_CONFIRMED".equals(record.status) && !record.interviewCancelled && record.interviewAt != null && record.interviewAt.isBefore(now); }
+    private void requireOpen(RecruitmentRecord record, String role) { if (isClosed(record)) throw blocked(record.id, role, "案件已結案，不可修改或重新啟動原案件。"); }
     private void requireOpen(RecruitmentRecord record) { if (isClosed(record)) throw new BusinessException("案件已結案，不可修改或重新啟動原案件。"); }
     private void requireHr(String role, String message) { if (!"HR".equals(role)) throw new BusinessException(message); }
     private String text(String value, String message) { if (value == null || value.isBlank()) throw new BusinessException(message); return value.trim(); }
@@ -292,5 +326,10 @@ public final class RecruitmentService {
     public record NotificationRequest(String role, String actorName, boolean failEmail, boolean failCalendar) {}
     public record SecondInvitationRequest(String role, String actorName, String result) {}
     public record ArrangementUpdateRequest(String role, String actorName, List<String> changedFields, List<String> interviewManagers, String interviewLocation, String interviewNotes, List<String> expectedTimeSlots, String confirmedInterviewAt) {}
-    public static final class BusinessException extends RuntimeException { public BusinessException(String message) { super(message); } }
+    public record DuplicateMatch(String id, Candidate candidate, OffsetDateTime keyinAt, String status, String matchedBy) {}
+    public static final class DuplicateException extends BusinessException {
+        public final List<DuplicateMatch> matches;
+        public DuplicateException(List<DuplicateMatch> matches) { super("可能重複邀約：請核對既有資料，由 HR 確認同一人或不同人。"); this.matches = matches; }
+    }
+    public static class BusinessException extends RuntimeException { public BusinessException(String message) { super(message); } }
 }

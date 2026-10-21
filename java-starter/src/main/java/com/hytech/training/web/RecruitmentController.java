@@ -28,6 +28,12 @@ public final class RecruitmentController {
     @ResponseStatus(HttpStatus.CREATED)
     public RecruitmentRecord create(@RequestBody CreateRequest request) { return service.create(request); }
 
+    @PostMapping("/duplicate-decisions/same-person")
+    public Object samePerson(@RequestBody CreateRequest request) {
+        service.confirmSamePerson(request);
+        return Map.of("message", "已記錄為同一人，未新增招募紀錄。");
+    }
+
     @PatchMapping("/records/{id}/status")
     public RecruitmentRecord updateStatus(@PathVariable String id, @RequestBody StatusUpdateRequest request) {
         return service.updateStatus(id, request);
@@ -80,6 +86,8 @@ public final class RecruitmentController {
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<?> businessError(BusinessException error) {
+        if (error instanceof DuplicateException duplicate)
+            return ResponseEntity.unprocessableEntity().body(Map.of("message", error.getMessage(), "duplicateMatches", duplicate.matches));
         return ResponseEntity.unprocessableEntity().body(Map.of("message", error.getMessage()));
     }
 }

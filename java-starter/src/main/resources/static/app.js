@@ -2,18 +2,41 @@ const ROLES={HR:"HR",MANAGER:"MANAGER"},STATUSES=["EMAIL_CONTACT","EMAIL_COMMUNI
 let state={records:[],scheduleRuns:[]},selectedRecordId,activeModule="records",notificationBusy=false;
 const $=selector=>document.querySelector(selector),role=()=>$("#current-role").value,actor=()=>role()===ROLES.HR?"Demo HR":"Demo 主管",record=id=>state.records.find(item=>item.id===id),fmt=value=>value?new Intl.DateTimeFormat("zh-TW",{dateStyle:"medium",timeStyle:"short"}).format(new Date(value)):"—",local=value=>{if(!value)return"";const date=new Date(value);return new Date(date-date.getTimezoneOffset()*60000).toISOString().slice(0,16)},iso=value=>value?new Date(value).toISOString():null,label=value=>LABELS[value]??value;
 const closed=item=>item.status==="REJECTED"||item.status==="INTERVIEW_CONFIRMED"&&!item.interviewCancelled&&item.interviewAt&&new Date(item.interviewAt)<new Date();
-async function api(path,method="GET",body){const response=await fetch(`/api/recruitment${path}`,{method,headers:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});if(!response.ok){let error={};try{error=await response.json()}catch{}throw new Error(error.message??"後端服務目前無法完成操作。")}return response.json()}
+async function api(path,method="GET",body){const response=await fetch(`/api/recruitment${path}`,{method,headers:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});if(!response.ok){let error={};try{error=await response.json()}catch{}throw Object.assign(new Error(error.message??"後端服務目前無法完成操作。"),{duplicateMatches:error.duplicateMatches})}return response.json()}
 async function refresh(){state=await api("");render()}
 function message(text,type="success",target="#message"){const item=$(target);item.textContent=text;item.className=`message ${type}`}
 function action(labelText,kind,name,id){const item=document.createElement("button");item.type="button";item.className=kind;item.textContent=labelText;item.dataset.action=name;item.dataset.recordId=id;return item}
 function render(){const currentRole=role();$("#records-module").hidden=activeModule!=="records";$("#arrangements-module").hidden=activeModule!=="arrangements";document.querySelectorAll(".hr-only").forEach(item=>item.hidden=currentRole!==ROLES.HR);$("#permission-note").textContent=currentRole===ROLES.HR?"HR 可調整未結案案件狀態、執行今日排程及處理二邀；結案案件不可重新啟動。":"主管可查看邀約與二邀狀態，但不能執行排程、二邀或其他修改。";$("#reminder-count").textContent=state.records.filter(item=>item.secondInvitationReminderAt&&!item.secondInvitationAt&&!item.candidateRespondedAt&&!closed(item)).length;$("#last-schedule").textContent=state.scheduleRuns.length?fmt(state.scheduleRuns.at(-1).at):"尚未執行";const keyword=$("#search").value.trim().toLowerCase(),status=$("#status-filter").value,records=state.records.filter(item=>(!keyword||[item.id,item.candidate.name,item.candidate.email,item.candidate.position].join(" ").toLowerCase().includes(keyword))&&(!status||item.status===status));const rows=$("#record-rows");rows.replaceChildren();for(const item of records){const row=document.createElement("tr"),second=item.secondInvitationAt?`已執行｜${fmt(item.secondInvitationAt)}\n${item.secondInvitationResult}`:item.candidateRespondedAt?"已回覆，不提醒":closed(item)?"已結案，不提醒":item.secondInvitationReminderAt?"需要二邀":"尚未到期";[item.id,`${item.candidate.name}\n${item.candidate.email}`,item.candidate.position,label(item.status),fmt(item.keyinAt),second,closed(item)?"已結案":"進行中"].forEach(value=>{const cell=document.createElement("td");cell.textContent=value;row.append(cell)});const actions=document.createElement("td");actions.className="actions";actions.append(action("查看歷程","text-button","history",item.id));if(currentRole===ROLES.HR&&!closed(item))actions.append(action("更新狀態","small primary","status",item.id));if(currentRole===ROLES.HR&&item.secondInvitationReminderAt&&!item.secondInvitationAt&&!item.candidateRespondedAt&&!closed(item))actions.append(action("執行二邀","small warning","second",item.id));if(currentRole===ROLES.HR&&closed(item))actions.append(action("另立新案","small secondary","follow",item.id));actions.append(action("通知／日曆紀錄","small secondary","notification",item.id));row.append(actions);rows.append(row)}$("#empty-state").hidden=records.length>0;renderArrangements();renderExtraModules()}
 function renderArrangements(){$("#arrangement-permission-note").textContent=role()===ROLES.HR?"顯示時間確認中及已確認面試案件；HR 可管理安排並確認最終面試時間。":"顯示時間確認中及已確認面試案件；主管可修改四類指定欄位。";const rows=$("#arrangement-rows");rows.replaceChildren();for(const item of state.records.filter(value=>["TIME_CONFIRMING","INTERVIEW_CONFIRMED"].includes(value.status))){const row=document.createElement("tr");[`${item.id}\n${item.candidate.name}`,`${item.candidate.position}\n${label(item.status)}`,(item.interviewManagers??[]).join("、")||"—",item.interviewLocation||"—",(item.expectedTimeSlots??[]).map(fmt).join("\n")||"—",fmt(item.interviewAt)].forEach(value=>{const cell=document.createElement("td");cell.textContent=value;row.append(cell)});const actions=document.createElement("td");if(!closed(item))actions.append(action("編輯安排","small primary","arrangement",item.id));actions.append(action("通知／日曆紀錄","small secondary","notification",item.id));row.append(actions);rows.append(row)}}
 function statusFields(){const confirmed=$("#new-status").value==="INTERVIEW_CONFIRMED",rejected=$("#new-status").value==="REJECTED";$("#interview-at-field").hidden=!confirmed;$("#rejection-fields").hidden=!rejected}
-function openDialog(kind,id){const item=record(id);selectedRecordId=id;if(kind==="notification"){openNotification(item);return}if(kind==="history"){$("#history-dialog-title").textContent=`${item.id}｜${item.candidate.name}`;const list=$("#history-list");list.replaceChildren();for(const event of [...item.statusHistory].reverse()){const li=document.createElement("li"),title=document.createElement("strong"),detail=document.createElement("span");title.textContent=event.fromStatus?`${label(event.fromStatus)} → ${label(event.toStatus)}`:`建立案件｜${label(event.toStatus)}`;detail.textContent=`${fmt(event.at)}｜${event.actorRole}／${event.actorName}${event.reason?`｜${event.reason}`:""}`;li.append(title,detail);list.append(li)}$("#history-dialog").showModal();return}if(kind==="status"){$("#status-form").reset();$("#status-dialog-title").textContent=`${item.id}｜${item.candidate.name}`;$("#new-status").value=item.status;$("#interview-at").value=local(item.interviewAt);$("#status-error").textContent="";statusFields();$("#status-dialog").showModal()}if(kind==="follow"){$("#new-case-form").reset();$("#new-case-dialog-title").textContent=`${item.id}｜${item.candidate.name}`;$("#new-case-error").textContent="";$("#new-case-dialog").showModal()}if(kind==="second"){$("#second-invitation-form").reset();$("#second-invitation-title").textContent=`${item.id}｜${item.candidate.name}`;$("#second-invitation-error").textContent="";$("#second-invitation-dialog").showModal()}if(kind==="arrangement"){$("#arrangement-title").textContent=`${item.id}｜${item.candidate.name}`;$("#interview-managers").value=(item.interviewManagers??[]).join("\n");$("#interview-location").value=item.interviewLocation??"";$("#interview-notes").value=item.interviewNotes??"";$("#expected-time-slots").value=(item.expectedTimeSlots??[]).map(local).join("\n");$("#confirmed-interview-at").value=local(item.interviewAt);$("#confirmed-interview-field").hidden=role()!==ROLES.HR;$("#expected-time-slots").disabled=false;$("#expected-time-help").textContent="可填寫多個期待時段（例如 2026-11-02 10:00）；最終面試時間由 HR 確認。";$("#arrangement-error").textContent="";$("#arrangement-dialog").showModal()}}
+function openDialog(kind,id){const item=record(id);selectedRecordId=id;if(kind==="notification"){openNotification(item);return}if(kind==="history"){$("#history-dialog-title").textContent=`${item.id}｜${item.candidate.name}`;const list=$("#history-list");list.replaceChildren();if(item.linkedOriginalCaseId){const li=document.createElement("li");li.textContent=`原案件：${item.linkedOriginalCaseId}｜另立原因：${item.newCaseReason}`;list.append(li)}for(const event of [...item.statusHistory].reverse()){const li=document.createElement("li"),title=document.createElement("strong"),detail=document.createElement("span");title.textContent=event.fromStatus?`${label(event.fromStatus)} → ${label(event.toStatus)}`:`建立案件｜${label(event.toStatus)}`;detail.textContent=`${fmt(event.at)}｜${event.actorRole}／${event.actorName}${event.reason?`｜${event.reason}`:""}`;li.append(title,detail);list.append(li)}$("#history-dialog").showModal();return}if(kind==="status"){$("#status-form").reset();$("#status-dialog-title").textContent=`${item.id}｜${item.candidate.name}`;$("#new-status").value=item.status;$("#interview-at").value=local(item.interviewAt);$("#status-error").textContent="";statusFields();$("#status-dialog").showModal()}if(kind==="follow"){$("#new-case-form").reset();$("#new-case-dialog-title").textContent=`${item.id}｜${item.candidate.name}`;$("#new-case-error").textContent="";$("#new-case-dialog").showModal()}if(kind==="second"){$("#second-invitation-form").reset();$("#second-invitation-title").textContent=`${item.id}｜${item.candidate.name}`;$("#second-invitation-error").textContent="";$("#second-invitation-dialog").showModal()}if(kind==="arrangement"){$("#arrangement-title").textContent=`${item.id}｜${item.candidate.name}`;$("#interview-managers").value=(item.interviewManagers??[]).join("\n");$("#interview-location").value=item.interviewLocation??"";$("#interview-notes").value=item.interviewNotes??"";$("#expected-time-slots").value=(item.expectedTimeSlots??[]).map(local).join("\n");$("#confirmed-interview-at").value=local(item.interviewAt);$("#confirmed-interview-field").hidden=role()!==ROLES.HR;$("#expected-time-slots").disabled=false;$("#expected-time-help").textContent="可填寫多個期待時段（例如 2026-11-02 10:00）；最終面試時間由 HR 確認。";$("#arrangement-error").textContent="";$("#arrangement-dialog").showModal()}}
 $("#record-rows").addEventListener("click",event=>{const button=event.target.closest("button[data-action]");if(button)openDialog(button.dataset.action,button.dataset.recordId)});$("#arrangement-rows").addEventListener("click",event=>{const button=event.target.closest("button[data-action]");if(button)openDialog(button.dataset.action,button.dataset.recordId)});
 $("#add-record").addEventListener("click",()=>{$("#add-form").reset();$("#add-error").textContent="";$("#possible-duplicate").hidden=true;$("#add-dialog").showModal()});
-$("#add-form").addEventListener("submit",async event=>{if(event.submitter?.value==="cancel")return;event.preventDefault();try{const created=await api("/records","POST",{role:role(),actorName:actor(),name:$("#candidate-name").value,email:$("#candidate-email").value,phone:$("#candidate-phone").value,position:$("#candidate-position").value,differentPersonConfirmed:$("#different-person-confirm").checked});$("#add-dialog").close();message(`已新增 ${created.candidate.name}，案件編號 ${created.id}。`);await refresh()}catch(error){$("#add-error").textContent=error.message;if(error.message.startsWith("可能重複邀約")){$("#possible-duplicate").hidden=false;$("#duplicate-details").textContent=error.message}}});
-$("#status-form").addEventListener("submit",async event=>{if(event.submitter?.value==="cancel")return;event.preventDefault();try{await api(`/records/${selectedRecordId}/status`,"PATCH",{role:role(),actorName:actor(),newStatus:$("#new-status").value,interviewAt:iso($("#interview-at").value),rejectionType:$("#rejection-type").value,rejectionReason:$("#rejection-reason").value,reason:$("#status-reason").value});$("#status-dialog").close();message("狀態已更新，異動歷程已保存至後端。");await refresh()}catch(error){$("#status-error").textContent=error.message}});
+const createInput=()=>({role:role(),actorName:actor(),name:$("#candidate-name").value,email:$("#candidate-email").value,phone:$("#candidate-phone").value,position:$("#candidate-position").value,differentPersonConfirmed:$("#different-person-confirm").checked});
+let createBusy=false;
+$("#add-form").addEventListener("input",event=>{if(event.target.id!=="different-person-confirm"){$("#different-person-confirm").checked=false;$("#possible-duplicate").hidden=true;$("#duplicate-details").replaceChildren()}});
+$("#add-form").addEventListener("submit",async event=>{
+  if(event.submitter?.value==="cancel")return;
+  event.preventDefault();if(createBusy)return;createBusy=true;
+  try{
+    if(event.submitter?.id==="same-person-confirm"){
+      const result=await api("/duplicate-decisions/same-person","POST",createInput());
+      $("#add-dialog").close();message(result.message);
+    }else{
+      const created=await api("/records","POST",createInput());
+      $("#add-dialog").close();message(`已新增 ${created.candidate.name}，案件編號 ${created.id}。`);
+    }
+    await refresh();
+  }catch(error){
+    $("#add-error").textContent=error.message;
+    $("#possible-duplicate").hidden=!error.duplicateMatches;
+    if(error.duplicateMatches){
+      const list=$("#duplicate-details");list.replaceChildren();
+      for(const match of error.duplicateMatches){const li=document.createElement("li");li.textContent=`${match.matchedBy}相同｜${match.id}｜${match.candidate.name}｜${match.candidate.email||"無 Email"}｜${match.candidate.phone||"無手機"}｜${label(match.status)}｜KEYIN ${fmt(match.keyinAt)}`;list.append(li)}
+      $("#different-person-confirm").checked=false;
+    }
+  }finally{createBusy=false}
+});$("#status-form").addEventListener("submit",async event=>{if(event.submitter?.value==="cancel")return;event.preventDefault();try{await api(`/records/${selectedRecordId}/status`,"PATCH",{role:role(),actorName:actor(),newStatus:$("#new-status").value,interviewAt:iso($("#interview-at").value),rejectionType:$("#rejection-type").value,rejectionReason:$("#rejection-reason").value,reason:$("#status-reason").value});$("#status-dialog").close();message("狀態已更新，異動歷程已保存至後端。");await refresh()}catch(error){$("#status-error").textContent=error.message}});
 $("#new-case-form").addEventListener("submit",async event=>{if(event.submitter?.value==="cancel")return;event.preventDefault();try{const created=await api(`/records/${selectedRecordId}/follow-up-cases`,"POST",{role:role(),actorName:actor(),confirmed:$("#new-case-confirm").checked,reason:$("#new-case-reason").value});$("#new-case-dialog").close();message(`已建立新案件 ${created.id}；原案件保持不變。`);await refresh()}catch(error){$("#new-case-error").textContent=error.message}});
 $("#second-invitation-form").addEventListener("submit",async event=>{if(event.submitter?.value==="cancel")return;event.preventDefault();try{await api(`/records/${selectedRecordId}/second-invitation`,"POST",{role:role(),actorName:actor(),result:$("#second-invitation-result").value});$("#second-invitation-dialog").close();message("二次邀約已保存至後端。");await refresh()}catch(error){$("#second-invitation-error").textContent=error.message}});
 $("#arrangement-form").addEventListener("submit",async event=>{if(event.submitter?.value==="cancel")return;event.preventDefault();const item=record(selectedRecordId),proposed={interviewManagers:$("#interview-managers").value.split(/[、,\n]/).map(value=>value.trim()).filter(Boolean),interviewLocation:$("#interview-location").value,interviewNotes:$("#interview-notes").value.trim(),expectedTimeSlots:$("#expected-time-slots").value.split("\n").map(value=>value.trim()).filter(Boolean).map(iso)};if(role()===ROLES.HR&&$("#confirmed-interview-at").value)proposed.confirmedInterviewAt=iso($("#confirmed-interview-at").value);const current={interviewManagers:item.interviewManagers??[],interviewLocation:item.interviewLocation??"",interviewNotes:item.interviewNotes??"",expectedTimeSlots:item.expectedTimeSlots??[],confirmedInterviewAt:item.interviewAt??null},changes=Object.fromEntries(Object.entries(proposed).filter(([key,value])=>JSON.stringify(value)!==JSON.stringify(current[key])));try{await api(`/records/${selectedRecordId}/arrangement`,"PUT",{role:role(),actorName:actor(),changedFields:Object.keys(changes),...changes});$("#arrangement-dialog").close();message("面試安排已保存至後端。","success","#arrangement-message");await refresh()}catch(error){$("#arrangement-error").textContent=error.message}});
@@ -30,6 +53,7 @@ if(location.protocol==="file:"){
 
 
 function renderExtraModules(){
+  renderCalendar();
   document.querySelectorAll("[data-module]").forEach(item=>item.classList.toggle("active",item.dataset.module===activeModule));
   for(const name of ["logs","templates"])$(`#${name}-module`).hidden=activeModule!==name||role()!==ROLES.HR;
   const select=$("#template-record"),previous=select.value;
@@ -39,6 +63,49 @@ function renderExtraModules(){
   $("#template-apply").disabled=!select.value;
   $("#template-message").textContent=select.options.length===1?"目前沒有可套用案件，請先由 HR 確認面試時間。":"可使用 REC-DEMO-NOTICE 虛構案件展示；也可從邀約紀錄開啟通知資料。";
 }
+function taipeiDay(value){
+  return new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(value));
+}
+function renderCalendar(){
+  const input=$("#calendar-month"),today=taipeiDay(new Date());
+  if(!input.value)input.value=today.slice(0,7);
+  const [year,month]=input.value.split("-").map(Number),grid=$("#calendar-grid");
+  grid.replaceChildren();
+  for(const day of ["日","一","二","三","四","五","六"]){
+    const heading=document.createElement("div");heading.className="calendar-weekday";heading.textContent=day;grid.append(heading);
+  }
+  const entries=state.records.filter(item=>item.notificationTask?.event?.interviewAt)
+    .map(item=>({item,event:item.notificationTask.event,day:taipeiDay(item.notificationTask.event.interviewAt)}))
+    .sort((a,b)=>new Date(a.event.interviewAt)-new Date(b.event.interviewAt));
+  const offset=new Date(Date.UTC(year,month-1,1)).getUTCDay(),days=new Date(Date.UTC(year,month,0)).getUTCDate();
+  const visible=entries.filter(entry=>entry.day.startsWith(input.value)),cancelled=visible.filter(entry=>entry.event.status==="已取消").length;
+  $("#calendar-summary").textContent=`${year} 年 ${month} 月｜有效 ${visible.length-cancelled} 筆｜已取消 ${cancelled} 筆${visible.length?"":"；本月尚無已建立的模擬日曆，請由 HR 執行通知後查看對應月份。"}`;
+  for(let index=0;index<Math.ceil((offset+days)/7)*7;index++){
+    const cell=document.createElement("div"),number=index-offset+1;
+    cell.className="calendar-day";
+    if(number<1||number>days){cell.classList.add("calendar-outside");grid.append(cell);continue}
+    const key=`${input.value}-${String(number).padStart(2,"0")}`,date=document.createElement("time");
+    date.dateTime=key;date.textContent=String(number);cell.append(date);
+    if(key===today){cell.classList.add("calendar-today");date.setAttribute("aria-current","date")}
+    for(const {item,event} of visible.filter(entry=>entry.day===key)){
+      const time=new Intl.DateTimeFormat("zh-TW",{timeZone:"Asia/Taipei",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(event.interviewAt));
+      const button=action(`${time}｜${item.candidate.name}\n${event.location}｜${event.status}\n${event.managers.join("、")}`,"calendar-event","notification",item.id);
+      if(event.status==="已取消")button.classList.add("calendar-cancelled");
+      button.title=`${item.id}｜${event.id}｜查看通知／日曆紀錄`;cell.append(button);
+    }
+    grid.append(cell);
+  }
+}
+function moveCalendarMonth(delta){
+  const [year,month]=$("#calendar-month").value.split("-").map(Number),date=new Date(Date.UTC(year,month-1+delta,1));
+  $("#calendar-month").value=`${date.getUTCFullYear()}-${String(date.getUTCMonth()+1).padStart(2,"0")}`;renderCalendar();
+}
+$("#calendar-prev").addEventListener("click",()=>moveCalendarMonth(-1));
+$("#calendar-next").addEventListener("click",()=>moveCalendarMonth(1));
+$("#calendar-today").addEventListener("click",()=>{$("#calendar-month").value=taipeiDay(new Date()).slice(0,7);renderCalendar()});
+$("#calendar-month").addEventListener("change",renderCalendar);
+$("#calendar-refresh").addEventListener("click",async()=>{try{await refresh()}catch(error){$("#calendar-summary").textContent=`更新失敗：${error.message}`}});
+$("#calendar-grid").addEventListener("click",event=>{const button=event.target.closest("button[data-action]");if(button)openDialog(button.dataset.action,button.dataset.recordId)});
 async function loadTemplates(){
   const templates=await api(`/notification-templates?role=${role()}`),select=$("#notice-template"),previous=select.value;
   select.replaceChildren(new Option("未選取／缺少範本（驗收用）", ""));
